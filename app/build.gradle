@@ -1,0 +1,71 @@
+plugins {
+    // 1. 【必须修改】删掉 alias(libs.plugins.android.application)
+    // 这是一个库，不是 App，所以只能用 library 插件
+    id 'com.android.library'
+    id 'maven-publish' // 2. 发布需要的插件
+}
+
+android {
+    namespace 'com.xiaobo.fireworks'
+    compileSdk 35
+
+    defaultConfig {
+        // 3. 【必须修改】Library 模块不能有 applicationId，这行必须删掉！
+        // applicationId "com.xiaobo.fireworks"
+
+        minSdk 24
+        targetSdk 35
+        versionCode 1
+        versionName "1.0"
+
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+
+    // 4. 配置源码包 (这样别人引用时能看到源码)
+    publishing {
+        singleVariant('release') {
+            withSourcesJar()
+        }
+    }
+}
+
+dependencies {
+    // 依赖保持不变
+    implementation libs.appcompat
+    implementation libs.material
+    implementation libs.activity
+    implementation libs.constraintlayout
+    testImplementation libs.junit
+    androidTestImplementation libs.ext.junit
+    androidTestImplementation libs.espresso.core
+}
+
+// 5. 【核心】配置 Maven 发布参数
+afterEvaluate {
+    publishing {
+        publications {
+            release(MavenPublication) {
+                // 从 release 版本构建
+                from components.release
+
+                // 这里填你的 GitHub 用户名和项目名
+                // JitPack 会自动识别，但写上更规范
+                groupId = 'com.github.xiaobo2001'
+                artifactId = 'fireworks'
+                version = '1.0.0'
+            }
+        }
+    }
+}
