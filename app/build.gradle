@@ -60,8 +60,6 @@ afterEvaluate {
                 // 从 release 版本构建
                 from components.release
 
-                // 这里填你的 GitHub 用户名和项目名
-                // JitPack 会自动识别，但写上更规范
                 groupId = 'com.github.xiaobo2001'
                 artifactId = 'fireworks'
                 version = '1.0.1'
