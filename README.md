@@ -37,7 +37,7 @@ dependencyResolutionManagement {
 
 ```groovy
 dependencies {
-    implementation 'com.github.xiaobo2001:fireworksandroid:v1.0.0' // 请使用最新版本
+    implementation 'com.github.xiaobo2001:fireworksandroid:v1.0.1' // 请使用最新版本
 }
 ```
 
