@@ -64,7 +64,7 @@ afterEvaluate {
                 // JitPack 会自动识别，但写上更规范
                 groupId = 'com.github.xiaobo2001'
                 artifactId = 'fireworks'
-                version = '1.0.0'
+                version = '1.0.1'
             }
         }
     }
