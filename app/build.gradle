@@ -52,7 +52,6 @@ afterEvaluate {
     publishing {
         publications {
             release(MavenPublication) {
-                // 从 release 版本构建
                 from components.release
 
                 groupId = 'com.github.xiaobo2001'

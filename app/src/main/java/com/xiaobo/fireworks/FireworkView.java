@@ -39,9 +39,6 @@ public class FireworkView extends View {
         paint.setDither(true);
     }
 
-    /**
-     * 对应 GlobalFirework 中的调用，停止动画并清空
-     */
     public void stop() {
         isStopped = true;
         activeParticles.clear();

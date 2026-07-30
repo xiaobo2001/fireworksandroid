@@ -80,9 +80,7 @@ public class GlobalFirework {
         currentViewRef = new WeakReference<>(view);
     }
 
-    /**
-     * 基础调用：使用默认配置
-     */
+
     public void bloom(float x, float y) {
         bloom(x, y, null);
     }

@@ -54,7 +54,6 @@ public class FireworkConfig {
         public Builder shape(Shape shape) { this.shape = shape; return this; }
         /** 设置烟花文字内容 (当shape为TEXT时生效) */
         public Builder text(String text) { this.text = text; return this; }
-        /** 是否开启发射火箭效果 */
         public Builder rocket(boolean enable) { this.launchRocket = enable; return this; }
 
         public FireworkConfig build() { return new FireworkConfig(this); }
