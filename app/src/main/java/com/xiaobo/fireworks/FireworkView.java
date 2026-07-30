@@ -1,9 +1,11 @@
 package com.xiaobo.fireworks;
 
 import android.content.Context;
+import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
+import android.graphics.Rect;
 import android.util.AttributeSet;
 import android.view.View;
 import java.util.ArrayDeque;
@@ -13,15 +15,17 @@ import java.util.List;
 import java.util.Queue;
 import java.util.Random;
 
+/**
+ * 核心烟花视图：支持物理效果、形状采样、生命周期管理
+ */
 public class FireworkView extends View {
 
-    private static final int MAX_PARTICLES = 800; // 提升上限以支持高密度
+    private static final int MAX_PARTICLES = 1500; // 调高上限以支持文字采样
     private final List<Particle> activeParticles = new ArrayList<>(MAX_PARTICLES);
     private final Queue<Particle> particlePool = new ArrayDeque<>(MAX_PARTICLES);
     private final Paint paint = new Paint();
     private final Random random = new Random();
 
-    // 默认兜底配置
     private final FireworkConfig defaultConfig = new FireworkConfig.Builder().build();
     private boolean isAnimating = false;
     private boolean isStopped = false;
@@ -33,72 +37,131 @@ public class FireworkView extends View {
         paint.setStrokeCap(Paint.Cap.ROUND);
         paint.setAntiAlias(true);
         paint.setDither(true);
-        setClickable(false);
-        setFocusable(false);
     }
 
+    /**
+     * 对应 GlobalFirework 中的调用，停止动画并清空
+     */
     public void stop() {
         isStopped = true;
         activeParticles.clear();
+        isAnimating = false;
         invalidate();
     }
-    public void resume() { isStopped = false; }
 
     /**
-     * 发射烟花的核心方法
+     * 对应 GlobalFirework 中的调用，恢复可用状态
+     */
+    public void resume() {
+        isStopped = false;
+    }
+
+    /**
+     * 发射烟花入口
      */
     public void launch(float x, float y, FireworkConfig config) {
         if (isStopped || activeParticles.size() >= MAX_PARTICLES) return;
 
-        FireworkConfig cfg = (config != null) ? config : defaultConfig;
-        boolean isRandomColor = (cfg.colors == null || cfg.colors.length == 0);
-        float baseHue = isRandomColor ? random.nextInt(360) : 0;
+        final FireworkConfig cfg = (config != null) ? config : defaultConfig;
 
-        // 1. 生成主粒子
-        for (int i = 0; i < cfg.particleCount; i++) {
+        if (cfg.launchRocket) {
+            // 创建火箭粒子：从屏幕底部飞向目标 Y
             Particle p = obtainParticle();
-
-            // 颜色处理
-            int color;
-            if (isRandomColor) {
-                float hue = baseHue + (random.nextFloat() * 40 - 20);
-                color = Color.HSVToColor(new float[]{hue, 0.8f, 1.0f});
-            } else {
-                color = cfg.colors[random.nextInt(cfg.colors.length)];
-            }
-
-            // 物理属性计算
-            double angle = Math.toRadians(random.nextInt(360));
-            float speed = (10 + random.nextFloat() * 20) * cfg.explosionRange;
-            float vx = (float) (Math.cos(angle) * speed);
-            float vy = (float) (Math.sin(angle) * speed * 0.75); // 压扁Y轴做透视
-            float size = 3f + random.nextFloat() * 4f;
-            float decay = (0.015f + random.nextFloat() * 0.01f) / cfg.duration;
-
-            p.reset(x, y, vx, vy, color, size, decay, 0, cfg.trailLength);
+            p.reset(x, getHeight(), 0, -28f, Color.YELLOW, 8f, 1.0f, 2, 1.0f);
+            p.targetY = y;
+            p.tag = cfg; // 携带配置，到达位置后触发爆炸
             activeParticles.add(p);
-        }
-
-        // 2. 生成闪烁微粒
-        if (cfg.hasSparkle) {
-            int sparkCount = cfg.particleCount / 3;
-            for (int i = 0; i < sparkCount; i++) {
-                Particle p = obtainParticle();
-                double angle = Math.toRadians(random.nextInt(360));
-                float speed = (15 + random.nextFloat() * 25) * cfg.explosionRange;
-                float decay = (0.03f + random.nextFloat() * 0.02f) / cfg.duration;
-                p.reset(x, y,
-                        (float)(Math.cos(angle)*speed),
-                        (float)(Math.sin(angle)*speed*0.75),
-                        Color.WHITE, 2f, decay, 1, 0);
-                activeParticles.add(p);
-            }
+        } else {
+            explode(x, y, cfg);
         }
 
         if (!isAnimating) {
             isAnimating = true;
             invalidate();
         }
+    }
+
+    /**
+     * 真正的爆炸逻辑：根据形状生成粒子组
+     */
+    private void explode(float x, float y, FireworkConfig cfg) {
+        boolean isRandomColor = (cfg.colors == null || cfg.colors.length == 0);
+        float baseHue = random.nextInt(360);
+
+        if (cfg.shape == FireworkConfig.Shape.TEXT) {
+            createByText(x, y, cfg, isRandomColor, baseHue);
+        } else if (cfg.shape == FireworkConfig.Shape.HEART) {
+            createByMath(x, y, cfg, true, isRandomColor, baseHue);
+        } else if (cfg.shape == FireworkConfig.Shape.STAR) {
+            createByMath(x, y, cfg, false, isRandomColor, baseHue);
+        } else {
+            createByCircle(x, y, cfg, isRandomColor, baseHue);
+        }
+    }
+
+    // 1. 经典圆形喷射
+    private void createByCircle(float x, float y, FireworkConfig cfg, boolean isRand, float hue) {
+        for (int i = 0; i < cfg.particleCount; i++) {
+            double angle = Math.toRadians(random.nextInt(360));
+            float speed = (8 + random.nextFloat() * 18) * cfg.explosionRange;
+            spawn(x, y, (float)(Math.cos(angle)*speed), (float)(Math.sin(angle)*speed*0.8f), cfg, isRand, hue, 0);
+        }
+    }
+
+    // 2. 数学形状（爱心、星形）
+    private void createByMath(float x, float y, FireworkConfig cfg, boolean isHeart, boolean isRand, float hue) {
+        int count = cfg.particleCount * 2;
+        for (int i = 0; i < count; i++) {
+            double t = 2 * Math.PI * i / count;
+            float vx, vy;
+            if (isHeart) {
+                vx = (float) (16 * Math.pow(Math.sin(t), 3));
+                vy = (float) -(13 * Math.cos(t) - 5 * Math.cos(2*t) - 2 * Math.cos(3*t) - Math.cos(4*t));
+            } else {
+                double r = 15 * (Math.abs(Math.cos(2.5 * t)) + 0.5);
+                vx = (float) (r * Math.cos(t));
+                vy = (float) (r * Math.sin(t));
+            }
+            vx *= cfg.explosionRange;
+            vy *= cfg.explosionRange;
+            spawn(x, y, vx, vy, cfg, isRand, hue, 0);
+        }
+    }
+
+    // 3. 字符采样（将文字转为像素点粒子）
+    private void createByText(float x, float y, FireworkConfig cfg, boolean isRand, float hue) {
+        Paint textPaint = new Paint();
+        textPaint.setTextSize(cfg.textSize);
+        textPaint.setFakeBoldText(true);
+
+        Rect bounds = new Rect();
+        textPaint.getTextBounds(cfg.text, 0, cfg.text.length(), bounds);
+
+        // 创建位图提取像素信息
+        Bitmap bitmap = Bitmap.createBitmap(bounds.width() + 20, bounds.height() + 20, Bitmap.Config.ALPHA_8);
+        Canvas canvas = new Canvas(bitmap);
+        canvas.drawText(cfg.text, 10 - bounds.left, 10 - bounds.top, textPaint);
+
+        int step = 3; // 步长，越小粒子越密集，建议保持在3-5
+        for (int ix = 0; ix < bitmap.getWidth(); ix += step) {
+            for (int iy = 0; iy < bitmap.getHeight(); iy += step) {
+                if (bitmap.getPixel(ix, iy) != 0) {
+                    float vx = (ix - bitmap.getWidth() / 2f) * 0.4f * cfg.explosionRange;
+                    float vy = (iy - bitmap.getHeight() / 2f) * 0.4f * cfg.explosionRange;
+                    spawn(x, y, vx, vy, cfg, isRand, hue, 0);
+                }
+            }
+        }
+        bitmap.recycle();
+    }
+
+    private void spawn(float x, float y, float vx, float vy, FireworkConfig cfg, boolean isRand, float hue, int type) {
+        Particle p = obtainParticle();
+        int color = isRand ? Color.HSVToColor(new float[]{hue + random.nextInt(40) - 20, 0.8f, 1.0f})
+                : cfg.colors[random.nextInt(cfg.colors.length)];
+        float decay = (0.012f + random.nextFloat() * 0.015f) / cfg.duration;
+        p.reset(x, y, vx, vy, color, 4f + random.nextFloat() * 3, decay, type, cfg.trailLength);
+        activeParticles.add(p);
     }
 
     @Override
@@ -111,8 +174,11 @@ public class FireworkView extends View {
         Iterator<Particle> iterator = activeParticles.iterator();
         while (iterator.hasNext()) {
             Particle p = iterator.next();
-            boolean alive = p.update();
-            if (!alive) {
+            if (!p.update()) {
+                // 如果是火箭，到达高度后触发爆炸
+                if (p.type == 2 && p.tag instanceof FireworkConfig) {
+                    explode(p.x, p.y, (FireworkConfig) p.tag);
+                }
                 iterator.remove();
                 recycleParticle(p);
             } else {
@@ -124,32 +190,18 @@ public class FireworkView extends View {
     }
 
     private void drawParticle(Canvas canvas, Particle p) {
+        paint.setColor(p.color);
+        paint.setAlpha((int) (255 * p.life));
         paint.setStrokeWidth(p.size);
-        int alpha = (int) (255 * p.life);
 
-        if (p.type == 0) { // 主粒子
-            paint.setColor(p.color);
-            paint.setAlpha(alpha);
-
+        if (p.type == 2) { // 火箭
+            canvas.drawCircle(p.x, p.y, p.size, paint);
+        } else { // 烟花粒子带拖尾
             if (p.trailScale > 0) {
-                // 绘制流光拖尾
-                float trailLen = 1.0f + (p.totalSpeed * 0.2f * p.trailScale);
-                canvas.drawLine(p.x, p.y, p.x - p.vx * trailLen, p.y - p.vy * trailLen, paint);
+                canvas.drawLine(p.x, p.y, p.x - p.vx * p.trailScale, p.y - p.vy * p.trailScale, paint);
             } else {
                 canvas.drawCircle(p.x, p.y, p.size / 2, paint);
             }
-
-            // 核心高光
-            if (p.life > 0.7f) {
-                paint.setColor(Color.WHITE);
-                paint.setAlpha((int)(255 * p.life));
-                canvas.drawCircle(p.x, p.y, p.size * 0.4f, paint);
-            }
-        } else { // 闪烁粒子
-            int flashAlpha = (int) (255 * p.life * (0.5f + random.nextFloat() * 0.5f));
-            paint.setColor(Color.WHITE);
-            paint.setAlpha(flashAlpha);
-            canvas.drawCircle(p.x, p.y, p.size, paint);
         }
     }
 
@@ -157,27 +209,35 @@ public class FireworkView extends View {
         Particle p = particlePool.poll();
         return (p == null) ? new Particle() : p;
     }
+
     private void recycleParticle(Particle p) {
         if (particlePool.size() < MAX_PARTICLES) particlePool.offer(p);
     }
 
     private static class Particle {
-        float x, y, vx, vy, size, life, decay, totalSpeed, trailScale;
-        int color, type; // type 0=Main, 1=Sparkle
+        float x, y, vx, vy, size, life, decay, trailScale, targetY;
+        int color, type; // 0:普通, 1:闪烁, 2:火箭
+        Object tag;
 
         void reset(float x, float y, float vx, float vy, int color, float size, float decay, int type, float trailScale) {
             this.x = x; this.y = y; this.vx = vx; this.vy = vy;
             this.color = color; this.size = size; this.decay = decay;
             this.type = type; this.trailScale = trailScale;
             this.life = 1.0f;
+            this.tag = null;
         }
 
         boolean update() {
             x += vx; y += vy;
-            if (type == 0) { vy += 0.25f; vx *= 0.95f; vy *= 0.95f; } // 重力与阻力
-            else { vy += 0.15f; vx *= 0.92f; vy *= 0.92f; }
-            totalSpeed = Math.abs(vx) + Math.abs(vy);
-            life -= decay;
+            if (type == 2) { // 火箭逻辑
+                if (y <= targetY) return false;
+                vx += (float)(Math.random() - 0.5f) * 1.5f; // 轻微摆动
+            } else {
+                vy += 0.22f; // 重力
+                vx *= 0.95f; // 空气阻力
+                vy *= 0.95f;
+                life -= decay;
+            }
             return life > 0;
         }
     }

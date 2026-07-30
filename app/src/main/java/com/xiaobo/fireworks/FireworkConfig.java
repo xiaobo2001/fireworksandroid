@@ -3,12 +3,20 @@ package com.xiaobo.fireworks;
 import android.graphics.Color;
 
 public class FireworkConfig {
-    public int particleCount;     // 粒子数量
-    public float explosionRange;  // 爆炸范围 (0.5 - 2.0)
-    public float trailLength;     // 拖尾长度 (0.0 - 3.0)
-    public float duration;        // 持续时间 (0.5 - 2.0)
-    public int[] colors;          // 指定颜色组 (null为随机)
-    public boolean hasSparkle;    // 是否开启闪烁微粒
+    public enum Shape { CIRCLE, HEART, STAR, TEXT } // 支持形状：圆形、爱心、五角星、文字
+
+    public int particleCount;
+    public float explosionRange;
+    public float trailLength;
+    public float duration;
+    public int[] colors;
+    public boolean hasSparkle;
+
+    // 新增自定义项
+    public Shape shape = Shape.CIRCLE;
+    public String text = "❤";       // 字符烟花的内容
+    public float textSize = 100f;    // 字符采样大小
+    public boolean launchRocket = false; // 是否先有一个上升过程
 
     private FireworkConfig(Builder builder) {
         this.particleCount = builder.particleCount;
@@ -17,6 +25,10 @@ public class FireworkConfig {
         this.duration = builder.duration;
         this.colors = builder.colors;
         this.hasSparkle = builder.hasSparkle;
+        this.shape = builder.shape;
+        this.text = builder.text;
+        this.textSize = builder.textSize;
+        this.launchRocket = builder.launchRocket;
     }
 
     public static class Builder {
@@ -26,19 +38,24 @@ public class FireworkConfig {
         private float duration = 1.0f;
         private int[] colors = null;
         private boolean hasSparkle = true;
+        private Shape shape = Shape.CIRCLE;
+        private String text = "A";
+        private float textSize = 100f;
+        private boolean launchRocket = false;
 
-        /** 粒子数量 (建议 40-100) */
         public Builder count(int count) { this.particleCount = count; return this; }
-        /** 爆炸范围 (速度)，默认1.0，越大炸得越开 */
         public Builder range(float range) { this.explosionRange = range; return this; }
-        /** 拖尾长度，默认1.0，0为无拖尾(圆点) */
         public Builder trail(float scale) { this.trailLength = scale; return this; }
-        /** 持续时间，默认1.0，越大消失越慢 */
         public Builder duration(float scale) { this.duration = scale; return this; }
-        /** 是否有闪烁粒子 */
         public Builder sparkle(boolean enable) { this.hasSparkle = enable; return this; }
-        /** 指定颜色 (例如: Color.RED, Color.YELLOW)，不传则全色谱随机 */
         public Builder colors(int... colors) { this.colors = colors; return this; }
+
+        /** 设置形状 */
+        public Builder shape(Shape shape) { this.shape = shape; return this; }
+        /** 设置烟花文字内容 (当shape为TEXT时生效) */
+        public Builder text(String text) { this.text = text; return this; }
+        /** 是否开启发射火箭效果 */
+        public Builder rocket(boolean enable) { this.launchRocket = enable; return this; }
 
         public FireworkConfig build() { return new FireworkConfig(this); }
     }

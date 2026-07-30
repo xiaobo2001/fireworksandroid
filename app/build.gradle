@@ -1,8 +1,7 @@
 plugins {
-    // 1. 【必须修改】删掉 alias(libs.plugins.android.application)
-    // 这是一个库，不是 App，所以只能用 library 插件
+
     id 'com.android.library'
-    id 'maven-publish' // 2. 发布需要的插件
+    id 'maven-publish'
 }
 
 android {
@@ -10,8 +9,6 @@ android {
     compileSdk 35
 
     defaultConfig {
-        // 3. 【必须修改】Library 模块不能有 applicationId，这行必须删掉！
-        // applicationId "com.xiaobo.fireworks"
 
         minSdk 24
         targetSdk 35
@@ -33,7 +30,6 @@ android {
         targetCompatibility JavaVersion.VERSION_11
     }
 
-    // 4. 配置源码包 (这样别人引用时能看到源码)
     publishing {
         singleVariant('release') {
             withSourcesJar()
@@ -42,7 +38,7 @@ android {
 }
 
 dependencies {
-    // 依赖保持不变
+
     implementation libs.appcompat
     implementation libs.material
     implementation libs.activity
@@ -52,7 +48,6 @@ dependencies {
     androidTestImplementation libs.espresso.core
 }
 
-// 5. 【核心】配置 Maven 发布参数
 afterEvaluate {
     publishing {
         publications {
@@ -62,7 +57,7 @@ afterEvaluate {
 
                 groupId = 'com.github.xiaobo2001'
                 artifactId = 'fireworks'
-                version = '1.0.1'
+                version = '1.0.2'
             }
         }
     }
