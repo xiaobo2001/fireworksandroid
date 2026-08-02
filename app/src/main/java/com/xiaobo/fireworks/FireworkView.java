@@ -17,7 +17,6 @@ import java.util.Random;
 
 /**
  * 核心烟花视图：支持物理效果、形状采样、生命周期管理
- * 修复：ConcurrentModificationException 并发修改异常
  */
 public class FireworkView extends View {
 
@@ -30,6 +29,7 @@ public class FireworkView extends View {
     private final FireworkConfig defaultConfig = new FireworkConfig.Builder().build();
     private boolean isAnimating = false;
     private boolean isStopped = false;
+    private float textSize = 250f; // 倒计时建议大一些
 
     public FireworkView(Context context) {
         super(context);
@@ -121,8 +121,6 @@ public class FireworkView extends View {
         }
     }
 
-<<<<<<< HEAD
-=======
 //    private void createByText(float x, float y, FireworkConfig cfg, boolean isRand, float hue) {
 //        Paint textPaint = new Paint();
 //        textPaint.setTextSize(cfg.textSize);
@@ -148,72 +146,113 @@ public class FireworkView extends View {
 //        bitmap.recycle();
 //    }
 
->>>>>>> d20d0de (更新)
+//    private void createByText(float x, float y, FireworkConfig cfg, boolean isRand, float hue) {
+//        Paint textPaint = new Paint();
+//        textPaint.setTextSize(cfg.textSize);
+//        textPaint.setFakeBoldText(true);
+//        textPaint.setAntiAlias(true);
+//
+//        Rect bounds = new Rect();
+//        textPaint.getTextBounds(cfg.text, 0, cfg.text.length(), bounds);
+//
+//        // 适当扩大Bitmap，防止边缘截断
+//        Bitmap bitmap = Bitmap.createBitmap(bounds.width() + 40, bounds.height() + 40, Bitmap.Config.ALPHA_8);
+//        Canvas canvas = new Canvas(bitmap);
+//        canvas.drawText(cfg.text, 20 - bounds.left, 20 - bounds.top, textPaint);
+//
+//        int centerX = bitmap.getWidth() / 2;
+//        int centerY = bitmap.getHeight() / 2;
+//
+//        // 动态调整采样步长，粒子多更有质感
+//        int step = Math.max(2, (int) (cfg.textSize / 30));
+//
+//        for (int ix = 0; ix < bitmap.getWidth(); ix += step) {
+//            for (int iy = 0; iy < bitmap.getHeight(); iy += step) {
+//                int alpha = bitmap.getPixel(ix, iy);
+//                if (alpha > 128) { // 只采集深色部分
+//
+//                    // --- 核心优化 1: 加入位置抖动，消除网格感 ---
+//                    float offsetX = ix + (random.nextFloat() - 0.5f) * step;
+//                    float offsetY = iy + (random.nextFloat() - 0.5f) * step;
+//
+//                    // 计算相对于中心的方向向量
+//                    float dx = (offsetX - centerX);
+//                    float dy = (offsetY - centerY);
+//                    float dist = (float) Math.sqrt(dx * dx + dy * dy);
+//
+//                    // 归一化方向
+//                    float nx = dx / (dist + 0.1f);
+//                    float ny = dy / (dist + 0.1f);
+//
+//                    // --- 核心优化 2: 径向速度模型 ---
+//                    // 基础膨胀速度 + 随机爆炸冲力
+//                    float baseSpeed = dist * 0.15f * cfg.explosionRange;
+//                    float extraBurst = (random.nextFloat() * 2.0f);
+//
+//                    float vx = nx * (baseSpeed + extraBurst);
+//                    float vy = ny * (baseSpeed + extraBurst);
+//
+//                    // --- 核心优化 3: 赋予初始速度扰动 ---
+//                    vx += (random.nextFloat() - 0.5f) * 2f;
+//                    vy += (random.nextFloat() - 0.5f) * 2f;
+//
+//                    // 产生粒子
+//                    spawnTextParticle(x, y, vx, vy, cfg, isRand, hue);
+//                }
+//            }
+//        }
+//        bitmap.recycle();
+//    }
+
     private void createByText(float x, float y, FireworkConfig cfg, boolean isRand, float hue) {
         Paint textPaint = new Paint();
         textPaint.setTextSize(cfg.textSize);
         textPaint.setFakeBoldText(true);
         textPaint.setAntiAlias(true);
 
+        // 倒计时文字通常很简洁，可以强制居中
         Rect bounds = new Rect();
         textPaint.getTextBounds(cfg.text, 0, cfg.text.length(), bounds);
 
-<<<<<<< HEAD
-        Bitmap bitmap = Bitmap.createBitmap(bounds.width() + 20, bounds.height() + 20, Bitmap.Config.ALPHA_8);
-=======
-        // 适当扩大Bitmap，防止边缘截断
         Bitmap bitmap = Bitmap.createBitmap(bounds.width() + 40, bounds.height() + 40, Bitmap.Config.ALPHA_8);
->>>>>>> d20d0de (更新)
         Canvas canvas = new Canvas(bitmap);
         canvas.drawText(cfg.text, 20 - bounds.left, 20 - bounds.top, textPaint);
 
         int centerX = bitmap.getWidth() / 2;
         int centerY = bitmap.getHeight() / 2;
 
-        // 动态调整采样步长，粒子多更有质感
-        int step = Math.max(2, (int) (cfg.textSize / 30));
+        // 针对大文字，增加采样步长以保证性能，但保持粒子灵动
+        int step = Math.max(2, (int)(cfg.textSize / 40));
 
-<<<<<<< HEAD
-        int step = 3;
-=======
->>>>>>> d20d0de (更新)
         for (int ix = 0; ix < bitmap.getWidth(); ix += step) {
             for (int iy = 0; iy < bitmap.getHeight(); iy += step) {
-                int alpha = bitmap.getPixel(ix, iy);
-                if (alpha > 128) { // 只采集深色部分
+                if (bitmap.getPixel(ix, iy) != 0) {
+                    // 1. 位置随机微调
+                    float rx = ix + (random.nextFloat() - 0.5f) * step;
+                    float ry = iy + (random.nextFloat() - 0.5f) * step;
 
-                    // --- 核心优化 1: 加入位置抖动，消除网格感 ---
-                    float offsetX = ix + (random.nextFloat() - 0.5f) * step;
-                    float offsetY = iy + (random.nextFloat() - 0.5f) * step;
-
-                    // 计算相对于中心的方向向量
-                    float dx = (offsetX - centerX);
-                    float dy = (offsetY - centerY);
+                    // 2. 核心：从文字中心向外喷射
+                    float dx = rx - centerX;
+                    float dy = ry - centerY;
                     float dist = (float) Math.sqrt(dx * dx + dy * dy);
 
-                    // 归一化方向
-                    float nx = dx / (dist + 0.1f);
-                    float ny = dy / (dist + 0.1f);
+                    // 归一化方向向量
+                    float nx = dx / (dist + 1f);
+                    float ny = dy / (dist + 1f);
 
-                    // --- 核心优化 2: 径向速度模型 ---
-                    // 基础膨胀速度 + 随机爆炸冲力
-                    float baseSpeed = dist * 0.15f * cfg.explosionRange;
-                    float extraBurst = (random.nextFloat() * 2.0f);
+                    // 3. 速度 = 基础向外推力 + 随机扰动
+                    // 这样文字会先“聚拢”成型，然后优雅地向外炸开
+                    float force = (dist * 0.12f + 2f) * cfg.explosionRange;
+                    float vx = nx * force + (random.nextFloat() - 0.5f) * 2f;
+                    float vy = ny * force + (random.nextFloat() - 0.5f) * 2f;
 
-                    float vx = nx * (baseSpeed + extraBurst);
-                    float vy = ny * (baseSpeed + extraBurst);
-
-                    // --- 核心优化 3: 赋予初始速度扰动 ---
-                    vx += (random.nextFloat() - 0.5f) * 2f;
-                    vy += (random.nextFloat() - 0.5f) * 2f;
-
-                    // 产生粒子
                     spawnTextParticle(x, y, vx, vy, cfg, isRand, hue);
                 }
             }
         }
         bitmap.recycle();
     }
+
 
     /**
      * 专为文字定制的粒子生成，增加随机性
@@ -310,11 +349,6 @@ public class FireworkView extends View {
         paint.setAlpha((int) (255 * p.life));
 
         if (p.type == 2) {
-<<<<<<< HEAD
-            canvas.drawCircle(p.x, p.y, p.size, paint);
-        } else {
-            if (p.trailScale > 0) {
-=======
             paint.setStrokeWidth(p.size);
             canvas.drawCircle(p.x, p.y, p.size, paint);
         } else {
@@ -322,7 +356,6 @@ public class FireworkView extends View {
             paint.setStrokeWidth(p.size);
             if (p.trailScale > 0.1f) {
                 // 绘制带有一点点位移的线，模拟动态模糊
->>>>>>> d20d0de (更新)
                 canvas.drawLine(p.x, p.y, p.x - p.vx * p.trailScale, p.y - p.vy * p.trailScale, paint);
             } else {
                 canvas.drawCircle(p.x, p.y, p.size / 2, paint);
@@ -372,16 +405,6 @@ public class FireworkView extends View {
 //            return life > 0;
 //        }
         boolean update() {
-<<<<<<< HEAD
-            x += vx; y += vy;
-            if (type == 2) {
-                if (y <= targetY) return false;
-                vx += (float)(Math.random() - 0.5f) * 1.5f;
-            } else {
-                vy += 0.22f;
-                vx *= 0.95f;
-                vy *= 0.95f;
-=======
             x += vx;
             y += vy;
             if (type == 2) { // 火箭模式
@@ -395,7 +418,6 @@ public class FireworkView extends View {
                 // 模拟重力
                 vy += 0.18f; // 略微减弱重力（原为0.22f），让文字停留更久
 
->>>>>>> d20d0de (更新)
                 life -= decay;
             }
             return life > 0;
