@@ -29,6 +29,7 @@ public class FireworkView extends View {
     private final FireworkConfig defaultConfig = new FireworkConfig.Builder().build();
     private boolean isAnimating = false;
     private boolean isStopped = false;
+    private float textSize = 250f; // 倒计时建议大一些
 
     public FireworkView(Context context) {
         super(context);
@@ -145,16 +146,74 @@ public class FireworkView extends View {
 //        bitmap.recycle();
 //    }
 
+//    private void createByText(float x, float y, FireworkConfig cfg, boolean isRand, float hue) {
+//        Paint textPaint = new Paint();
+//        textPaint.setTextSize(cfg.textSize);
+//        textPaint.setFakeBoldText(true);
+//        textPaint.setAntiAlias(true);
+//
+//        Rect bounds = new Rect();
+//        textPaint.getTextBounds(cfg.text, 0, cfg.text.length(), bounds);
+//
+//        // 适当扩大Bitmap，防止边缘截断
+//        Bitmap bitmap = Bitmap.createBitmap(bounds.width() + 40, bounds.height() + 40, Bitmap.Config.ALPHA_8);
+//        Canvas canvas = new Canvas(bitmap);
+//        canvas.drawText(cfg.text, 20 - bounds.left, 20 - bounds.top, textPaint);
+//
+//        int centerX = bitmap.getWidth() / 2;
+//        int centerY = bitmap.getHeight() / 2;
+//
+//        // 动态调整采样步长，粒子多更有质感
+//        int step = Math.max(2, (int) (cfg.textSize / 30));
+//
+//        for (int ix = 0; ix < bitmap.getWidth(); ix += step) {
+//            for (int iy = 0; iy < bitmap.getHeight(); iy += step) {
+//                int alpha = bitmap.getPixel(ix, iy);
+//                if (alpha > 128) { // 只采集深色部分
+//
+//                    // --- 核心优化 1: 加入位置抖动，消除网格感 ---
+//                    float offsetX = ix + (random.nextFloat() - 0.5f) * step;
+//                    float offsetY = iy + (random.nextFloat() - 0.5f) * step;
+//
+//                    // 计算相对于中心的方向向量
+//                    float dx = (offsetX - centerX);
+//                    float dy = (offsetY - centerY);
+//                    float dist = (float) Math.sqrt(dx * dx + dy * dy);
+//
+//                    // 归一化方向
+//                    float nx = dx / (dist + 0.1f);
+//                    float ny = dy / (dist + 0.1f);
+//
+//                    // --- 核心优化 2: 径向速度模型 ---
+//                    // 基础膨胀速度 + 随机爆炸冲力
+//                    float baseSpeed = dist * 0.15f * cfg.explosionRange;
+//                    float extraBurst = (random.nextFloat() * 2.0f);
+//
+//                    float vx = nx * (baseSpeed + extraBurst);
+//                    float vy = ny * (baseSpeed + extraBurst);
+//
+//                    // --- 核心优化 3: 赋予初始速度扰动 ---
+//                    vx += (random.nextFloat() - 0.5f) * 2f;
+//                    vy += (random.nextFloat() - 0.5f) * 2f;
+//
+//                    // 产生粒子
+//                    spawnTextParticle(x, y, vx, vy, cfg, isRand, hue);
+//                }
+//            }
+//        }
+//        bitmap.recycle();
+//    }
+
     private void createByText(float x, float y, FireworkConfig cfg, boolean isRand, float hue) {
         Paint textPaint = new Paint();
         textPaint.setTextSize(cfg.textSize);
         textPaint.setFakeBoldText(true);
         textPaint.setAntiAlias(true);
 
+        // 倒计时文字通常很简洁，可以强制居中
         Rect bounds = new Rect();
         textPaint.getTextBounds(cfg.text, 0, cfg.text.length(), bounds);
 
-        // 适当扩大Bitmap，防止边缘截断
         Bitmap bitmap = Bitmap.createBitmap(bounds.width() + 40, bounds.height() + 40, Bitmap.Config.ALPHA_8);
         Canvas canvas = new Canvas(bitmap);
         canvas.drawText(cfg.text, 20 - bounds.left, 20 - bounds.top, textPaint);
@@ -162,46 +221,38 @@ public class FireworkView extends View {
         int centerX = bitmap.getWidth() / 2;
         int centerY = bitmap.getHeight() / 2;
 
-        // 动态调整采样步长，粒子多更有质感
-        int step = Math.max(2, (int) (cfg.textSize / 30));
+        // 针对大文字，增加采样步长以保证性能，但保持粒子灵动
+        int step = Math.max(2, (int)(cfg.textSize / 40));
 
         for (int ix = 0; ix < bitmap.getWidth(); ix += step) {
             for (int iy = 0; iy < bitmap.getHeight(); iy += step) {
-                int alpha = bitmap.getPixel(ix, iy);
-                if (alpha > 128) { // 只采集深色部分
+                if (bitmap.getPixel(ix, iy) != 0) {
+                    // 1. 位置随机微调
+                    float rx = ix + (random.nextFloat() - 0.5f) * step;
+                    float ry = iy + (random.nextFloat() - 0.5f) * step;
 
-                    // --- 核心优化 1: 加入位置抖动，消除网格感 ---
-                    float offsetX = ix + (random.nextFloat() - 0.5f) * step;
-                    float offsetY = iy + (random.nextFloat() - 0.5f) * step;
-
-                    // 计算相对于中心的方向向量
-                    float dx = (offsetX - centerX);
-                    float dy = (offsetY - centerY);
+                    // 2. 核心：从文字中心向外喷射
+                    float dx = rx - centerX;
+                    float dy = ry - centerY;
                     float dist = (float) Math.sqrt(dx * dx + dy * dy);
 
-                    // 归一化方向
-                    float nx = dx / (dist + 0.1f);
-                    float ny = dy / (dist + 0.1f);
+                    // 归一化方向向量
+                    float nx = dx / (dist + 1f);
+                    float ny = dy / (dist + 1f);
 
-                    // --- 核心优化 2: 径向速度模型 ---
-                    // 基础膨胀速度 + 随机爆炸冲力
-                    float baseSpeed = dist * 0.15f * cfg.explosionRange;
-                    float extraBurst = (random.nextFloat() * 2.0f);
+                    // 3. 速度 = 基础向外推力 + 随机扰动
+                    // 这样文字会先“聚拢”成型，然后优雅地向外炸开
+                    float force = (dist * 0.12f + 2f) * cfg.explosionRange;
+                    float vx = nx * force + (random.nextFloat() - 0.5f) * 2f;
+                    float vy = ny * force + (random.nextFloat() - 0.5f) * 2f;
 
-                    float vx = nx * (baseSpeed + extraBurst);
-                    float vy = ny * (baseSpeed + extraBurst);
-
-                    // --- 核心优化 3: 赋予初始速度扰动 ---
-                    vx += (random.nextFloat() - 0.5f) * 2f;
-                    vy += (random.nextFloat() - 0.5f) * 2f;
-
-                    // 产生粒子
                     spawnTextParticle(x, y, vx, vy, cfg, isRand, hue);
                 }
             }
         }
         bitmap.recycle();
     }
+
 
     /**
      * 专为文字定制的粒子生成，增加随机性
