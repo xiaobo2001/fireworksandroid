@@ -11,16 +11,15 @@ import android.view.View;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Queue;
 import java.util.Random;
 
-/**
- * 核心烟花视图：支持物理效果、形状采样、生命周期管理
- */
 public class FireworkView extends View {
 
-    private static final int MAX_PARTICLES = 1500;
+    // 1. 显著提升粒子上限，确保多个烟花连发不卡死
+    private static final int MAX_PARTICLES = 5000;
     private final List<Particle> activeParticles = new ArrayList<>(MAX_PARTICLES);
     private final Queue<Particle> particlePool = new ArrayDeque<>(MAX_PARTICLES);
     private final Paint paint = new Paint();
@@ -29,7 +28,6 @@ public class FireworkView extends View {
     private final FireworkConfig defaultConfig = new FireworkConfig.Builder().build();
     private boolean isAnimating = false;
     private boolean isStopped = false;
-    private float textSize = 250f; // 倒计时建议大一些
 
     public FireworkView(Context context) {
         super(context);
@@ -58,14 +56,21 @@ public class FireworkView extends View {
         isStopped = false;
     }
 
+    /**
+     * 核心修复：即使粒子快满了，也允许发射火箭，只是限制爆炸产生的碎片数
+     */
     public void launch(float x, float y, FireworkConfig config) {
-        if (isStopped || activeParticles.size() >= MAX_PARTICLES) return;
+        if (isStopped) return;
+
+        // 如果粒子快满了，不再产生新粒子，保护性能
+        if (activeParticles.size() > MAX_PARTICLES - 200) return;
 
         final FireworkConfig cfg = (config != null) ? config : defaultConfig;
 
         if (cfg.launchRocket) {
             Particle p = obtainParticle();
-            p.reset(x, getHeight(), 0, -28f, Color.YELLOW, 8f, 1.0f, 2, 1.0f);
+            // 火箭上升速度和位置
+            p.reset(x, getHeight(), 0, -25f - random.nextFloat() * 10, Color.YELLOW, 8f, 1.0f, 2, 1.0f);
             p.targetY = y;
             p.tag = cfg;
             activeParticles.add(p);
@@ -75,7 +80,7 @@ public class FireworkView extends View {
 
         if (!isAnimating) {
             isAnimating = true;
-            invalidate();
+            postInvalidateOnAnimation();
         }
     }
 
@@ -92,6 +97,62 @@ public class FireworkView extends View {
         } else {
             createByCircle(x, y, cfg, isRandomColor, baseHue);
         }
+    }
+
+    // --- 优化：根据当前剩余空间动态调整文字采样步长 ---
+    private void createByText(float x, float y, FireworkConfig cfg, boolean isRand, float hue) {
+        Paint textPaint = new Paint();
+        textPaint.setTextSize(cfg.textSize);
+        textPaint.setFakeBoldText(true);
+        textPaint.setAntiAlias(true);
+
+        Rect bounds = new Rect();
+        textPaint.getTextBounds(cfg.text, 0, cfg.text.length(), bounds);
+
+        Bitmap bitmap = Bitmap.createBitmap(bounds.width() + 40, bounds.height() + 40, Bitmap.Config.ALPHA_8);
+        Canvas canvas = new Canvas(bitmap);
+        canvas.drawText(cfg.text, 20 - bounds.left, 20 - bounds.top, textPaint);
+
+        int centerX = bitmap.getWidth() / 2;
+        int centerY = bitmap.getHeight() / 2;
+
+        // 核心修复：动态计算步长。如果当前屏幕粒子多，就采样稀疏点，防止后续点击失效
+        int currentCount = activeParticles.size();
+        int stepBase = (int) (cfg.textSize / 35);
+        int step = (currentCount > MAX_PARTICLES * 0.7) ? stepBase + 3 : Math.max(2, stepBase);
+
+        for (int ix = 0; ix < bitmap.getWidth(); ix += step) {
+            for (int iy = 0; iy < bitmap.getHeight(); iy += step) {
+                if (bitmap.getPixel(ix, iy) != 0) {
+                    float rx = ix + (random.nextFloat() - 0.5f) * step;
+                    float ry = iy + (random.nextFloat() - 0.5f) * step;
+
+                    float dx = rx - centerX;
+                    float dy = ry - centerY;
+                    float dist = (float) Math.sqrt(dx * dx + dy * dy);
+                    float nx = dx / (dist + 1f);
+                    float ny = dy / (dist + 1f);
+
+                    float force = (dist * 0.12f + 2f) * cfg.explosionRange;
+                    float vx = nx * force + (random.nextFloat() - 0.5f) * 2f;
+                    float vy = ny * force + (random.nextFloat() - 0.5f) * 2f;
+
+                    spawnTextParticle(x, y, vx, vy, cfg, isRand, hue);
+                }
+            }
+        }
+        bitmap.recycle();
+    }
+
+    private void spawnTextParticle(float x, float y, float vx, float vy, FireworkConfig cfg, boolean isRand, float hue) {
+        Particle p = obtainParticle();
+        float brightness = 0.8f + random.nextFloat() * 0.2f;
+        int color = isRand ? Color.HSVToColor(new float[]{hue + random.nextInt(30) - 15, 0.7f, brightness})
+                : cfg.colors[random.nextInt(cfg.colors.length)];
+
+        float decay = (0.006f + random.nextFloat() * 0.01f) / cfg.duration;
+        p.reset(x, y, vx, vy, color, 3f + random.nextFloat() * 2f, decay, 0, cfg.trailLength * 0.4f);
+        activeParticles.add(p);
     }
 
     private void createByCircle(float x, float y, FireworkConfig cfg, boolean isRand, float hue) {
@@ -121,168 +182,15 @@ public class FireworkView extends View {
         }
     }
 
-//    private void createByText(float x, float y, FireworkConfig cfg, boolean isRand, float hue) {
-//        Paint textPaint = new Paint();
-//        textPaint.setTextSize(cfg.textSize);
-//        textPaint.setFakeBoldText(true);
-//
-//        Rect bounds = new Rect();
-//        textPaint.getTextBounds(cfg.text, 0, cfg.text.length(), bounds);
-//
-//        Bitmap bitmap = Bitmap.createBitmap(bounds.width() + 20, bounds.height() + 20, Bitmap.Config.ALPHA_8);
-//        Canvas canvas = new Canvas(bitmap);
-//        canvas.drawText(cfg.text, 10 - bounds.left, 10 - bounds.top, textPaint);
-//
-//        int step = 3;
-//        for (int ix = 0; ix < bitmap.getWidth(); ix += step) {
-//            for (int iy = 0; iy < bitmap.getHeight(); iy += step) {
-//                if (bitmap.getPixel(ix, iy) != 0) {
-//                    float vx = (ix - bitmap.getWidth() / 2f) * 0.4f * cfg.explosionRange;
-//                    float vy = (iy - bitmap.getHeight() / 2f) * 0.4f * cfg.explosionRange;
-//                    spawn(x, y, vx, vy, cfg, isRand, hue, 0);
-//                }
-//            }
-//        }
-//        bitmap.recycle();
-//    }
-
-//    private void createByText(float x, float y, FireworkConfig cfg, boolean isRand, float hue) {
-//        Paint textPaint = new Paint();
-//        textPaint.setTextSize(cfg.textSize);
-//        textPaint.setFakeBoldText(true);
-//        textPaint.setAntiAlias(true);
-//
-//        Rect bounds = new Rect();
-//        textPaint.getTextBounds(cfg.text, 0, cfg.text.length(), bounds);
-//
-//        // 适当扩大Bitmap，防止边缘截断
-//        Bitmap bitmap = Bitmap.createBitmap(bounds.width() + 40, bounds.height() + 40, Bitmap.Config.ALPHA_8);
-//        Canvas canvas = new Canvas(bitmap);
-//        canvas.drawText(cfg.text, 20 - bounds.left, 20 - bounds.top, textPaint);
-//
-//        int centerX = bitmap.getWidth() / 2;
-//        int centerY = bitmap.getHeight() / 2;
-//
-//        // 动态调整采样步长，粒子多更有质感
-//        int step = Math.max(2, (int) (cfg.textSize / 30));
-//
-//        for (int ix = 0; ix < bitmap.getWidth(); ix += step) {
-//            for (int iy = 0; iy < bitmap.getHeight(); iy += step) {
-//                int alpha = bitmap.getPixel(ix, iy);
-//                if (alpha > 128) { // 只采集深色部分
-//
-//                    // --- 核心优化 1: 加入位置抖动，消除网格感 ---
-//                    float offsetX = ix + (random.nextFloat() - 0.5f) * step;
-//                    float offsetY = iy + (random.nextFloat() - 0.5f) * step;
-//
-//                    // 计算相对于中心的方向向量
-//                    float dx = (offsetX - centerX);
-//                    float dy = (offsetY - centerY);
-//                    float dist = (float) Math.sqrt(dx * dx + dy * dy);
-//
-//                    // 归一化方向
-//                    float nx = dx / (dist + 0.1f);
-//                    float ny = dy / (dist + 0.1f);
-//
-//                    // --- 核心优化 2: 径向速度模型 ---
-//                    // 基础膨胀速度 + 随机爆炸冲力
-//                    float baseSpeed = dist * 0.15f * cfg.explosionRange;
-//                    float extraBurst = (random.nextFloat() * 2.0f);
-//
-//                    float vx = nx * (baseSpeed + extraBurst);
-//                    float vy = ny * (baseSpeed + extraBurst);
-//
-//                    // --- 核心优化 3: 赋予初始速度扰动 ---
-//                    vx += (random.nextFloat() - 0.5f) * 2f;
-//                    vy += (random.nextFloat() - 0.5f) * 2f;
-//
-//                    // 产生粒子
-//                    spawnTextParticle(x, y, vx, vy, cfg, isRand, hue);
-//                }
-//            }
-//        }
-//        bitmap.recycle();
-//    }
-
-    private void createByText(float x, float y, FireworkConfig cfg, boolean isRand, float hue) {
-        Paint textPaint = new Paint();
-        textPaint.setTextSize(cfg.textSize);
-        textPaint.setFakeBoldText(true);
-        textPaint.setAntiAlias(true);
-
-        // 倒计时文字通常很简洁，可以强制居中
-        Rect bounds = new Rect();
-        textPaint.getTextBounds(cfg.text, 0, cfg.text.length(), bounds);
-
-        Bitmap bitmap = Bitmap.createBitmap(bounds.width() + 40, bounds.height() + 40, Bitmap.Config.ALPHA_8);
-        Canvas canvas = new Canvas(bitmap);
-        canvas.drawText(cfg.text, 20 - bounds.left, 20 - bounds.top, textPaint);
-
-        int centerX = bitmap.getWidth() / 2;
-        int centerY = bitmap.getHeight() / 2;
-
-        // 针对大文字，增加采样步长以保证性能，但保持粒子灵动
-        int step = Math.max(2, (int)(cfg.textSize / 40));
-
-        for (int ix = 0; ix < bitmap.getWidth(); ix += step) {
-            for (int iy = 0; iy < bitmap.getHeight(); iy += step) {
-                if (bitmap.getPixel(ix, iy) != 0) {
-                    // 1. 位置随机微调
-                    float rx = ix + (random.nextFloat() - 0.5f) * step;
-                    float ry = iy + (random.nextFloat() - 0.5f) * step;
-
-                    // 2. 核心：从文字中心向外喷射
-                    float dx = rx - centerX;
-                    float dy = ry - centerY;
-                    float dist = (float) Math.sqrt(dx * dx + dy * dy);
-
-                    // 归一化方向向量
-                    float nx = dx / (dist + 1f);
-                    float ny = dy / (dist + 1f);
-
-                    // 3. 速度 = 基础向外推力 + 随机扰动
-                    // 这样文字会先“聚拢”成型，然后优雅地向外炸开
-                    float force = (dist * 0.12f + 2f) * cfg.explosionRange;
-                    float vx = nx * force + (random.nextFloat() - 0.5f) * 2f;
-                    float vy = ny * force + (random.nextFloat() - 0.5f) * 2f;
-
-                    spawnTextParticle(x, y, vx, vy, cfg, isRand, hue);
-                }
-            }
-        }
-        bitmap.recycle();
-    }
-
-
-    /**
-     * 专为文字定制的粒子生成，增加随机性
-     */
-    private void spawnTextParticle(float x, float y, float vx, float vy, FireworkConfig cfg, boolean isRand, float hue) {
-        Particle p = obtainParticle();
-
-        // 优化 4: 颜色微调，让文字更有层次感
-        float brightness = 0.8f + random.nextFloat() * 0.2f; // 随机亮度
-        int color = isRand ? Color.HSVToColor(new float[]{hue + random.nextInt(30) - 15, 0.7f, brightness})
-                : cfg.colors[random.nextInt(cfg.colors.length)];
-
-        // 优化 5: 不同的衰减速度，让文字消散时有参差感
-        float decay = (0.008f + random.nextFloat() * 0.012f) / cfg.duration;
-
-        // 文字粒子通常不需要太长的拖尾，0.4f 左右比较灵动
-        p.reset(x, y, vx, vy, color, 3f + random.nextFloat() * 2f, decay, 0, cfg.trailLength * 0.5f);
-        activeParticles.add(p);
-    }
-
     private void spawn(float x, float y, float vx, float vy, FireworkConfig cfg, boolean isRand, float hue, int type) {
         Particle p = obtainParticle();
         int color = isRand ? Color.HSVToColor(new float[]{hue + random.nextInt(40) - 20, 0.8f, 1.0f})
                 : cfg.colors[random.nextInt(cfg.colors.length)];
-        float decay = (0.012f + random.nextFloat() * 0.015f) / cfg.duration;
+        float decay = (0.01f + random.nextFloat() * 0.015f) / cfg.duration;
         p.reset(x, y, vx, vy, color, 4f + random.nextFloat() * 3, decay, type, cfg.trailLength);
         activeParticles.add(p);
     }
 
-    // ========== 核心修复：重写 onDraw，避免遍历中修改列表 ==========
     @Override
     protected void onDraw(Canvas canvas) {
         if (isStopped || activeParticles.isEmpty()) {
@@ -290,72 +198,48 @@ public class FireworkView extends View {
             return;
         }
 
-        // 1. 暂存待爆炸的火箭任务（位置 + 配置）
-        List<Runnable> pendingExplosions = new ArrayList<>();
-        // 2. 暂存待回收的死亡粒子
-        List<Particle> deadParticles = new ArrayList<>();
+        // 使用待爆炸任务列表，避免在迭代时修改 activeParticles
+        List<ExplosionTask> pendingExplosions = new ArrayList<>();
 
-        // 3. 仅遍历更新状态 + 绘制，不修改原列表
-        for (int i = 0; i < activeParticles.size(); i++) {
-            Particle p = activeParticles.get(i);
+        // 使用 Iterator 可以在遍历时安全地 remove 死亡粒子
+        Iterator<Particle> iterator = activeParticles.iterator();
+        while (iterator.hasNext()) {
+            Particle p = iterator.next();
             boolean alive = p.update();
 
             if (!alive) {
-                deadParticles.add(p);
-                // 火箭粒子死亡 → 暂存爆炸任务，遍历结束后执行
+                // 如果是火箭到达目标点，记录爆炸位置
                 if (p.type == 2 && p.tag instanceof FireworkConfig) {
-                    final float px = p.x;
-                    final float py = p.y;
-                    final FireworkConfig cfg = (FireworkConfig) p.tag;
-                    pendingExplosions.add(() -> explode(px, py, cfg));
+                    pendingExplosions.add(new ExplosionTask(p.x, p.y, (FireworkConfig) p.tag));
                 }
+                iterator.remove();
+                recycleParticle(p);
             } else {
                 drawParticle(canvas, p);
             }
         }
 
-        // 4. 遍历结束后，统一执行爆炸（新增粒子）
-        for (Runnable task : pendingExplosions) {
-            task.run();
+        // 执行爆炸
+        for (ExplosionTask task : pendingExplosions) {
+            explode(task.x, task.y, task.cfg);
         }
 
-        // 5. 统一移除死亡粒子并回收
-        for (Particle p : deadParticles) {
-            activeParticles.remove(p);
-            recycleParticle(p);
+        if (!activeParticles.isEmpty()) {
+            postInvalidateOnAnimation();
+        } else {
+            isAnimating = false;
         }
-
-        if (isAnimating) postInvalidateOnAnimation();
     }
-
-//    private void drawParticle(Canvas canvas, Particle p) {
-//        paint.setColor(p.color);
-//        paint.setAlpha((int) (255 * p.life));
-//        paint.setStrokeWidth(p.size);
-//
-//        if (p.type == 2) {
-//            canvas.drawCircle(p.x, p.y, p.size, paint);
-//        } else {
-//            if (p.trailScale > 0) {
-//                canvas.drawLine(p.x, p.y, p.x - p.vx * p.trailScale, p.y - p.vy * p.trailScale, paint);
-//            } else {
-//                canvas.drawCircle(p.x, p.y, p.size / 2, paint);
-//            }
-//        }
-//    }
 
     private void drawParticle(Canvas canvas, Particle p) {
         paint.setColor(p.color);
         paint.setAlpha((int) (255 * p.life));
+        paint.setStrokeWidth(p.size);
 
         if (p.type == 2) {
-            paint.setStrokeWidth(p.size);
             canvas.drawCircle(p.x, p.y, p.size, paint);
         } else {
-            // 如果是文字形状产生的粒子，可以稍微画得圆润一点
-            paint.setStrokeWidth(p.size);
             if (p.trailScale > 0.1f) {
-                // 绘制带有一点点位移的线，模拟动态模糊
                 canvas.drawLine(p.x, p.y, p.x - p.vx * p.trailScale, p.y - p.vy * p.trailScale, paint);
             } else {
                 canvas.drawCircle(p.x, p.y, p.size / 2, paint);
@@ -369,7 +253,17 @@ public class FireworkView extends View {
     }
 
     private void recycleParticle(Particle p) {
-        if (particlePool.size() < MAX_PARTICLES) particlePool.offer(p);
+        if (particlePool.size() < MAX_PARTICLES) {
+            particlePool.offer(p);
+        }
+    }
+
+    private static class ExplosionTask {
+        float x, y;
+        FireworkConfig cfg;
+        ExplosionTask(float x, float y, FireworkConfig cfg) {
+            this.x = x; this.y = y; this.cfg = cfg;
+        }
     }
 
     private static class Particle {
@@ -378,46 +272,23 @@ public class FireworkView extends View {
         Object tag;
 
         void reset(float x, float y, float vx, float vy, int color, float size, float decay, int type, float trailScale) {
-            this.x = x;
-            this.y = y;
-            this.vx = vx;
-            this.vy = vy;
-            this.color = color;
-            this.size = size;
-            this.decay = decay;
-            this.type = type;
-            this.trailScale = trailScale;
+            this.x = x; this.y = y; this.vx = vx; this.vy = vy;
+            this.color = color; this.size = size; this.decay = decay;
+            this.type = type; this.trailScale = trailScale;
             this.life = 1.0f;
             this.tag = null;
         }
 
-        //        boolean update() {
-//            x += vx; y += vy;
-//            if (type == 2) {
-//                if (y <= targetY) return false;
-//                vx += (float)(Math.random() - 0.5f) * 1.5f;
-//            } else {
-//                vy += 0.22f;
-//                vx *= 0.95f;
-//                vy *= 0.95f;
-//                life -= decay;
-//            }
-//            return life > 0;
-//        }
         boolean update() {
             x += vx;
             y += vy;
-            if (type == 2) { // 火箭模式
+            if (type == 2) {
                 if (y <= targetY) return false;
-                vx += (float) (Math.random() - 0.5f) * 1.5f;
+                vx += (float) (Math.random() - 0.5f) * 2f;
             } else {
-                // --- 优化：增加空气阻力，使形状展开后能稍微顿一下 ---
-                vx *= 0.94f; // 略微增加阻力（原为0.95f）
-                vy *= 0.94f;
-
-                // 模拟重力
-                vy += 0.18f; // 略微减弱重力（原为0.22f），让文字停留更久
-
+                vx *= 0.93f; // 空气阻力
+                vy *= 0.93f;
+                vy += 0.15f; // 重力：让文字消散更有流动感
                 life -= decay;
             }
             return life > 0;
