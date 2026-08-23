@@ -56,7 +56,7 @@ afterEvaluate {
 
                 groupId = 'com.github.xiaobo2001'
                 artifactId = 'fireworks'
-                version = '1.0.4'
+                version = '1.0.5'
             }
         }
     }
