@@ -26,10 +26,8 @@ public class GlobalFirework {
     private Vibrator vibrator;
     private boolean isInit = false;
 
-    // ========== 新增：壁纸模式成员 ==========
+    // 壁纸模式专属渲染实例，与App内完全隔离
     private FireworkView wallpaperFireworkView;
-    private boolean isWallpaperMode = false;
-    // =======================================
 
     private GlobalFirework() {
     }
@@ -42,6 +40,7 @@ public class GlobalFirework {
             return;
         }
 
+        // 【原有逻辑不变】仅作用于当前Activity的烟花视图
         FireworkView view = getCurrentFireworkView();
         if (view == null) return;
 
@@ -80,12 +79,11 @@ public class GlobalFirework {
     }
 
     /**
-     * 原有 Activity 模式初始化，逻辑完全不变
+     * 【原有逻辑完全不变】App内Activity模式初始化
      */
     public void init(Application app, int soundResId) {
         if (isInit) return;
         isInit = true;
-        isWallpaperMode = false;
 
         vibrator = (Vibrator) app.getSystemService(Context.VIBRATOR_SERVICE);
         soundPool = new SoundPool.Builder().setMaxStreams(5)
@@ -129,18 +127,16 @@ public class GlobalFirework {
         });
     }
 
-    // ========== 新增：壁纸模式 4 个核心方法 ==========
-
     /**
-     * 壁纸模式初始化（不要和 init(Application) 混用）
+     * 壁纸模式初始化，仅创建壁纸专属渲染器，不影响App内原有逻辑
      *
-     * @param soundResId 音效资源，传 -1 关闭音效
+     * @param soundResId 音效资源，传-1关闭音效
      */
     public void initForWallpaper(Context context, int soundResId) {
-        if (isWallpaperMode) return;
-        isWallpaperMode = true;
+        // 已有壁纸渲染器则直接返回，不重复创建
+        if (wallpaperFireworkView != null) return;
 
-        // 公共资源如果还没初始化（壁纸先启动的场景），才初始化
+        // 公共资源未初始化（壁纸先于App启动的场景）才初始化
         if (!isInit) {
             isInit = true;
             vibrator = (Vibrator) context.getSystemService(Context.VIBRATOR_SERVICE);
@@ -149,23 +145,21 @@ public class GlobalFirework {
                             .setUsage(AudioAttributes.USAGE_GAME).build()).build();
         }
 
-        // 如果传入了有效音效，且当前未加载，才加载
+        // 传入有效音效且未加载时，才加载音效
         if (soundResId != -1 && soundId == -1 && soundPool != null) {
             soundId = soundPool.load(context, soundResId, 1);
         }
 
-        // 仅创建壁纸独有的离屏渲染 View
+        // 创建壁纸独立的离屏渲染视图
         wallpaperFireworkView = new FireworkView(context.getApplicationContext());
         wallpaperFireworkView.resume();
     }
-
 
     /**
      * 设置壁纸画布尺寸
      */
     public void setWallpaperSize(int width, int height) {
         if (wallpaperFireworkView == null) return;
-        // 手动测量与布局，让 View 获得正确宽高
         int widthSpec = View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY);
         int heightSpec = View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY);
         wallpaperFireworkView.measure(widthSpec, heightSpec);
@@ -173,31 +167,34 @@ public class GlobalFirework {
     }
 
     /**
-     * 更新一帧并绘制到 Canvas（壁纸渲染循环调用）
+     * 【壁纸专属】发射烟花，不影响App内的bloom方法
      */
-    public void updateAndDraw(Canvas canvas) {
+    public void bloomWallpaper(float x, float y, FireworkConfig config) {
+        if (wallpaperFireworkView != null) {
+            wallpaperFireworkView.launch(x, y, config);
+            playFeedback();
+        }
+    }
+
+    /**
+     * 【壁纸专属】更新一帧并绘制到画布
+     */
+    public void updateAndDrawWallpaper(Canvas canvas) {
         if (wallpaperFireworkView == null) return;
         wallpaperFireworkView.update();
         wallpaperFireworkView.drawToCanvas(canvas);
     }
 
     /**
-     * 释放壁纸资源
+     * 释放壁纸专属资源，绝不触碰App公共资源
      */
     public void releaseWallpaper() {
         if (wallpaperFireworkView != null) {
             wallpaperFireworkView.stop();
             wallpaperFireworkView = null;
         }
-        isWallpaperMode = false;
-        if (soundPool != null) {
-            soundPool.release();
-            soundPool = null;
-        }
-        vibrator = null;
-        isInit = false;
+
     }
-    // ==========================================
 
     private void attach(Activity activity) {
         ViewGroup root = activity.findViewById(android.R.id.content);
@@ -211,24 +208,16 @@ public class GlobalFirework {
         currentViewRef = new WeakReference<>(view);
     }
 
-    /**
-     * 统一获取当前生效的烟花视图，自动适配两种模式
-     */
+
     private FireworkView getCurrentFireworkView() {
-        if (isWallpaperMode) {
-            return wallpaperFireworkView;
-        } else {
-            return (currentViewRef != null) ? currentViewRef.get() : null;
-        }
+        return (currentViewRef != null) ? currentViewRef.get() : null;
     }
 
     public void bloom(float x, float y) {
         bloom(x, y, null);
     }
 
-    /**
-     * 发射烟花，自动兼容 Activity 模式与壁纸模式
-     */
+
     public void bloom(float x, float y, FireworkConfig config) {
         FireworkView view = getCurrentFireworkView();
         if (view != null) {
@@ -238,7 +227,7 @@ public class GlobalFirework {
     }
 
     private void playFeedback() {
-        // 双重判空：soundPool 和 soundId 都有效才播放
+        // 空值兜底，所有场景安全
         if (soundPool != null && soundId != -1) {
             soundPool.play(soundId, 0.5f, 0.5f, 1, 0, 1.0f);
         }
