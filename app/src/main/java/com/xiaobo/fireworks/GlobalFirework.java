@@ -106,11 +106,26 @@ public class GlobalFirework {
                 if (currentViewRef != null && currentViewRef.get() != null)
                     currentViewRef.get().stop();
             }
-            @Override public void onActivityCreated(Activity a, Bundle b) {}
-            @Override public void onActivityStarted(Activity a) {}
-            @Override public void onActivityStopped(Activity a) {}
-            @Override public void onActivitySaveInstanceState(Activity a, Bundle b) {}
-            @Override public void onActivityDestroyed(Activity a) {}
+
+            @Override
+            public void onActivityCreated(Activity a, Bundle b) {
+            }
+
+            @Override
+            public void onActivityStarted(Activity a) {
+            }
+
+            @Override
+            public void onActivityStopped(Activity a) {
+            }
+
+            @Override
+            public void onActivitySaveInstanceState(Activity a, Bundle b) {
+            }
+
+            @Override
+            public void onActivityDestroyed(Activity a) {
+            }
         });
     }
 
@@ -118,24 +133,32 @@ public class GlobalFirework {
 
     /**
      * 壁纸模式初始化（不要和 init(Application) 混用）
+     *
      * @param soundResId 音效资源，传 -1 关闭音效
      */
     public void initForWallpaper(Context context, int soundResId) {
         if (isWallpaperMode) return;
         isWallpaperMode = true;
-        isInit = true;
 
-        // 初始化音效与震动
-        vibrator = (Vibrator) context.getSystemService(Context.VIBRATOR_SERVICE);
-        soundPool = new SoundPool.Builder().setMaxStreams(3)
-                .setAudioAttributes(new AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_GAME).build()).build();
-        if (soundResId != -1) soundId = soundPool.load(context, soundResId, 1);
+        // 公共资源如果还没初始化（壁纸先启动的场景），才初始化
+        if (!isInit) {
+            isInit = true;
+            vibrator = (Vibrator) context.getSystemService(Context.VIBRATOR_SERVICE);
+            soundPool = new SoundPool.Builder().setMaxStreams(5)
+                    .setAudioAttributes(new AudioAttributes.Builder()
+                            .setUsage(AudioAttributes.USAGE_GAME).build()).build();
+        }
 
-        // 创建独立的离屏渲染 View，不依附任何 Activity
+        // 如果传入了有效音效，且当前未加载，才加载
+        if (soundResId != -1 && soundId == -1 && soundPool != null) {
+            soundId = soundPool.load(context, soundResId, 1);
+        }
+
+        // 仅创建壁纸独有的离屏渲染 View
         wallpaperFireworkView = new FireworkView(context.getApplicationContext());
         wallpaperFireworkView.resume();
     }
+
 
     /**
      * 设置壁纸画布尺寸
@@ -215,7 +238,10 @@ public class GlobalFirework {
     }
 
     private void playFeedback() {
-        if (soundId != -1) soundPool.play(soundId, 0.5f, 0.5f, 1, 0, 1.0f);
+        // 双重判空：soundPool 和 soundId 都有效才播放
+        if (soundPool != null && soundId != -1) {
+            soundPool.play(soundId, 0.5f, 0.5f, 1, 0, 1.0f);
+        }
         if (vibrator != null && vibrator.hasVibrator()) {
             if (Build.VERSION.SDK_INT >= 26)
                 vibrator.vibrate(VibrationEffect.createOneShot(15, 80));
