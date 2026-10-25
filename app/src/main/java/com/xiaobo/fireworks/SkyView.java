@@ -78,6 +78,15 @@ public class SkyView extends View {
     private int weatherTarget = 24;
     private final RectF weatherOval = new RectF(); // 复用椭圆矩形，消除每粒子每帧分配
 
+    // ===== 视觉重制：天气/孔明灯预渲染精灵 =====
+    private Bitmap snowSoftSprite;      // 柔光雪绒（径向渐变）
+    private Bitmap snowCrystalSprite;   // 六臂晶体雪花（大颗近景）
+    private Bitmap sakuraSprite;        // 樱花花瓣
+    private Bitmap ginkgoSprite;        // 银杏叶
+    private Bitmap lanternSprite;       // 孔明灯（渐变灯体+火芯+灯口）
+    private final android.graphics.Matrix weatherMatrix = new android.graphics.Matrix();
+    private final RectF spriteDest = new RectF();
+
     private static final float METEOR_MIN_ANGLE = 8f, METEOR_MAX_ANGLE = 22f;
     private static final int METEOR_SEGMENTS = 10;
 
@@ -175,7 +184,8 @@ public class SkyView extends View {
         if (lanternList.size() >= 10) lanternList.remove(0);
         Lantern l = new Lantern();
         l.x = x;
-        l.y = (y > fieldHeight * 0.8f) ? y : Math.min(y + fieldHeight * 0.2f, fieldHeight - 30f);
+        // 直接在点击处点亮（灯体主体略偏下，视觉上像从手中放起）
+        l.y = Math.min(y, fieldHeight - 40f);
         l.vy = -(0.55f + random.nextFloat() * 0.5f);   // 60fps 基准每帧上升像素
         l.size = 9f + random.nextFloat() * 6f;
         l.swayAmp = 8f + random.nextFloat() * 14f;
@@ -713,26 +723,20 @@ public class SkyView extends View {
 
     private void drawLanterns(Canvas canvas) {
         if (lanternList.isEmpty()) return;
+        ensureLanternSprite();
         for (int i = 0; i < lanternList.size(); i++) {
             Lantern l = lanternList.get(i);
             if (l.alpha <= 0f) continue;
             float drawX = l.x + (float) Math.sin(l.swayPhase) * l.swayAmp;
             float flicker = 0.85f + 0.15f * (float) Math.sin(l.swayPhase * 7f);
             int a = (int) (255 * l.alpha * flicker);
-
-            // 外光晕
-            paint.setStyle(Paint.Style.FILL);
-            paint.setColor(0xFFFFB24D);
-            paint.setAlpha(a / 4);
-            canvas.drawCircle(drawX, l.y, l.size * 2.4f, paint);
-            // 灯体
-            paint.setColor(0xFFFFC26B);
-            paint.setAlpha(a);
-            canvas.drawCircle(drawX, l.y, l.size, paint);
-            // 灯芯亮点
-            paint.setColor(0xFFFFE3A9);
-            paint.setAlpha(Math.min(255, a * 3 / 2));
-            canvas.drawCircle(drawX, l.y - l.size * 0.15f, l.size * 0.45f, paint);
+            // 呼吸微缩放：灯火轻盈摇曳感
+            float pulse = 1f + 0.04f * (float) Math.sin(l.swayPhase * 5f);
+            float w = l.size * 3.4f * pulse;
+            float h = w * (84f / 64f);
+            spriteDest.set(drawX - w * 0.5f, l.y - h * 0.5f, drawX + w * 0.5f, l.y + h * 0.5f);
+            paint.setAlpha(Math.max(0, Math.min(255, a)));
+            canvas.drawBitmap(lanternSprite, null, spriteDest, paint);
         }
     }
 
@@ -746,32 +750,42 @@ public class SkyView extends View {
         p.baseX = random.nextFloat() * fieldWidth;
         p.y = -20f - random.nextFloat() * fieldHeight * 0.5f;
         p.phase = random.nextFloat() * 6.28f;
+        p.depth = random.nextFloat(); // 0 远景 → 1 近景，三层景深视差
+        p.rotSpeed = 0f;
         switch (weather) {
             case WEATHER_SNOW:
-                p.vy = 0.7f + random.nextFloat() * 1.1f;
-                p.size = 1.5f + random.nextFloat() * 2.5f;
+                // 近景大颗为晶体雪花（旋转），远景为柔光雪绒
+                p.sprite = (p.depth > 0.62f) ? 1 : 0;
+                p.vy = (0.7f + random.nextFloat() * 1.1f) * (0.55f + p.depth * 0.9f);
+                p.size = (2f + random.nextFloat() * 3f) * (0.5f + p.depth * 0.9f);
                 p.color = 0xFFFFFFFF;
-                p.sway = 10f + random.nextFloat() * 20f;
+                p.sway = (10f + random.nextFloat() * 20f) * (0.6f + p.depth);
                 p.phaseSpeed = 0.02f + random.nextFloat() * 0.02f;
-                p.alpha = 140 + random.nextInt(100);
+                p.alpha = (int) (90 + 140 * p.depth);
+                if (p.sprite == 1) p.rotSpeed = (random.nextFloat() - 0.5f) * 0.05f;
                 break;
             case WEATHER_SAKURA:
-                p.vy = 1.4f + random.nextFloat() * 1.6f;
-                p.size = 3f + random.nextFloat() * 3f;
+                p.sprite = 2;
+                p.vy = (1.4f + random.nextFloat() * 1.6f) * (0.6f + p.depth * 0.8f);
+                p.size = (3f + random.nextFloat() * 3f) * (0.5f + p.depth * 0.8f);
                 p.color = 0xFFF8B8CC;
-                p.sway = 20f + random.nextFloat() * 40f;
+                p.sway = (20f + random.nextFloat() * 40f) * (0.6f + p.depth);
                 p.phaseSpeed = 0.03f + random.nextFloat() * 0.03f;
-                p.alpha = 170 + random.nextInt(70);
+                p.alpha = (int) (150 + 90 * p.depth);
+                p.rotSpeed = (random.nextFloat() - 0.5f) * 0.08f;
                 break;
             case WEATHER_GINKGO:
-                p.vy = 1.6f + random.nextFloat() * 1.8f;
-                p.size = 3.5f + random.nextFloat() * 3.5f;
+                p.sprite = 3;
+                p.vy = (1.6f + random.nextFloat() * 1.8f) * (0.6f + p.depth * 0.8f);
+                p.size = (3.5f + random.nextFloat() * 3.5f) * (0.5f + p.depth * 0.8f);
                 p.color = 0xFFE8C24A;
-                p.sway = 18f + random.nextFloat() * 36f;
+                p.sway = (18f + random.nextFloat() * 36f) * (0.6f + p.depth);
                 p.phaseSpeed = 0.025f + random.nextFloat() * 0.03f;
-                p.alpha = 160 + random.nextInt(80);
+                p.alpha = (int) (140 + 95 * p.depth);
+                p.rotSpeed = (random.nextFloat() - 0.5f) * 0.07f;
                 break;
             default:
+                p.sprite = 0;
                 p.vy = 0;
                 p.size = 0;
                 p.color = 0;
@@ -784,24 +798,195 @@ public class SkyView extends View {
 
     private void drawWeather(Canvas canvas) {
         if (weatherList.isEmpty()) return;
-        paint.setStyle(Paint.Style.FILL);
+        ensureWeatherSprites();
         for (int i = 0; i < weatherList.size(); i++) {
             WeatherP p = weatherList.get(i);
-            paint.setColor(p.color);
+            Bitmap sprite;
+            switch (p.sprite) {
+                case 1: sprite = snowCrystalSprite; break;
+                case 2: sprite = sakuraSprite; break;
+                case 3: sprite = ginkgoSprite; break;
+                default: sprite = snowSoftSprite; break;
+            }
+            if (sprite == null) continue;
             paint.setAlpha(p.alpha);
-            if (weather == WEATHER_SNOW) {
-                canvas.drawCircle(p.x, p.y, p.size, paint);
+            float half = sprite.getWidth() * 0.5f;
+            if (p.rotSpeed == 0f) {
+                // 柔光雪绒：直接 blit，最便宜
+                canvas.drawBitmap(sprite, p.x - half, p.y - half, paint);
             } else {
-                // 樱花/银杏：旋转的椭圆叶（矩形复用，消除每粒子每帧分配）
-                float rot = p.phase * 1.5f;
-                canvas.save();
-                canvas.translate(p.x, p.y);
-                canvas.rotate((float) Math.toDegrees(rot));
-                weatherOval.set(-p.size, -p.size * 0.6f, p.size, p.size * 0.6f);
-                canvas.drawOval(weatherOval, paint);
-                canvas.restore();
+                // 晶体雪花/花瓣/银杏：旋转绘制（矩阵复用，零分配）
+                weatherMatrix.reset();
+                weatherMatrix.setRotate((float) Math.toDegrees(p.phase * 1.5f));
+                weatherMatrix.postTranslate(p.x, p.y);
+                canvas.drawBitmap(sprite, weatherMatrix, paint);
             }
         }
+    }
+
+    /** 懒构建天气/孔明灯精灵（一次性，总内存仅几十 KB） */
+    private void ensureWeatherSprites() {
+        if (snowSoftSprite == null) snowSoftSprite = buildSnowSoftSprite();
+        if (snowCrystalSprite == null) snowCrystalSprite = buildSnowCrystalSprite();
+        if (sakuraSprite == null) sakuraSprite = buildSakuraSprite();
+        if (ginkgoSprite == null) ginkgoSprite = buildGinkgoSprite();
+    }
+
+    /** 柔光雪绒：径向渐变，边缘柔和发丝不会生硬 */
+    private Bitmap buildSnowSoftSprite() {
+        int s = 24;
+        Bitmap bmp = Bitmap.createBitmap(s, s, Bitmap.Config.ARGB_8888);
+        Canvas c = new Canvas(bmp);
+        paint.reset();
+        paint.setAntiAlias(true);
+        paint.setShader(new android.graphics.RadialGradient(s / 2f, s / 2f, s / 2f,
+                new int[]{0xFFFFFFFF, 0xB8FFFFFF, 0x00FFFFFF},
+                new float[]{0f, 0.45f, 1f}, android.graphics.Shader.TileMode.CLAMP));
+        c.drawCircle(s / 2f, s / 2f, s / 2f, paint);
+        paint.setShader(null);
+        return bmp;
+    }
+
+    /** 六臂晶体雪花：大颗近景，带柔光底 + 璀璨主臂 + 蓝调反光 */
+    private Bitmap buildSnowCrystalSprite() {
+        int s = 40;
+        Bitmap bmp = Bitmap.createBitmap(s, s, Bitmap.Config.ARGB_8888);
+        Canvas c = new Canvas(bmp);
+        float cx = s / 2f, cy = s / 2f, r = s * 0.42f;
+        paint.reset();
+        paint.setAntiAlias(true);
+        // 柔光底
+        paint.setShader(new android.graphics.RadialGradient(cx, cy, r * 1.1f,
+                new int[]{0x66CBE4FF, 0x22CBE4FF, 0x00000000},
+                new float[]{0f, 0.6f, 1f}, android.graphics.Shader.TileMode.CLAMP));
+        c.drawCircle(cx, cy, r * 1.1f, paint);
+        paint.setShader(null);
+        // 六臂主干 + 分叉 + 中心亮核
+        paint.setStyle(Paint.Style.STROKE);
+        paint.setStrokeCap(Paint.Cap.ROUND);
+        paint.setColor(0xFFEAF4FF);
+        for (int i = 0; i < 6; i++) {
+            double ang = Math.toRadians(60 * i);
+            float ex = cx + (float) Math.cos(ang) * r;
+            float ey = cy + (float) Math.sin(ang) * r;
+            paint.setStrokeWidth(2.4f);
+            c.drawLine(cx, cy, ex, ey, paint);
+            // 两根分叉
+            double brAng = Math.toRadians(60 * i + 40);
+            float mx = cx + (float) Math.cos(ang) * r * 0.6f;
+            float my = cy + (float) Math.sin(ang) * r * 0.6f;
+            paint.setStrokeWidth(1.8f);
+            c.drawLine(mx, my, mx + (float) Math.cos(brAng) * r * 0.34f, my + (float) Math.sin(brAng) * r * 0.34f, paint);
+            double blAng = Math.toRadians(60 * i - 40);
+            c.drawLine(mx, my, mx + (float) Math.cos(blAng) * r * 0.34f, my + (float) Math.sin(blAng) * r * 0.34f, paint);
+        }
+        paint.setStyle(Paint.Style.FILL);
+        paint.setColor(0xFFFFFFFF);
+        c.drawCircle(cx, cy, 2.6f, paint);
+        return bmp;
+    }
+
+    /** 樱花花瓣：粉嫩渐变花瓣 + 花瓣尖缺口 + 花丝 */
+    private Bitmap buildSakuraSprite() {
+        int s = 32;
+        Bitmap bmp = Bitmap.createBitmap(s, s, Bitmap.Config.ARGB_8888);
+        Canvas c = new Canvas(bmp);
+        paint.reset();
+        paint.setAntiAlias(true);
+        // 花瓣主体：顶部圆宽、底部收尖的径向渐变
+        paint.setShader(new android.graphics.RadialGradient(s * 0.5f, s * 0.42f, s * 0.5f,
+                new int[]{0xFFFFD7E4, 0xFFF7A8C0, 0xFFD96A8E},
+                new float[]{0f, 0.6f, 1f}, android.graphics.Shader.TileMode.CLAMP));
+        Path petal = new Path();
+        petal.moveTo(s * 0.5f, s * 0.95f);
+        petal.cubicTo(s * 0.02f, s * 0.62f, s * 0.06f, s * 0.10f, s * 0.5f, s * 0.18f);
+        petal.cubicTo(s * 0.94f, s * 0.10f, s * 0.98f, s * 0.62f, s * 0.5f, s * 0.95f);
+        petal.close();
+        c.drawPath(petal, paint);
+        paint.setShader(null);
+        // 花瓣尖缺口
+        paint.setColor(0x33D96A8E);
+        c.drawCircle(s * 0.5f, s * 0.16f, s * 0.085f, paint);
+        // 花丝
+        paint.setColor(0xFFF7A8C0);
+        c.drawCircle(s * 0.5f, s * 0.78f, s * 0.05f, paint);
+        return bmp;
+    }
+
+    /** 银杏叶：扇形 + 叶柄 + 叶脉 */
+    private Bitmap buildGinkgoSprite() {
+        int s = 34;
+        Bitmap bmp = Bitmap.createBitmap(s, s, Bitmap.Config.ARGB_8888);
+        Canvas c = new Canvas(bmp);
+        float cx = s * 0.5f, cy = s * 0.62f, r = s * 0.4f;
+        paint.reset();
+        paint.setAntiAlias(true);
+        paint.setShader(new android.graphics.RadialGradient(cx, cy - r * 0.2f, r * 1.2f,
+                new int[]{0xFFFFE08A, 0xFFE8C24A, 0xFFB98A1E},
+                new float[]{0f, 0.6f, 1f}, android.graphics.Shader.TileMode.CLAMP));
+        Path fan = new Path();
+        fan.moveTo(cx, cy);
+        fan.arcTo(new RectF(cx - r, cy - r, cx + r, cy + r), 200, 140);
+        fan.close();
+        c.drawPath(fan, paint);
+        paint.setShader(null);
+        // 叶脉
+        paint.setStyle(Paint.Style.STROKE);
+        paint.setStrokeWidth(1f);
+        paint.setColor(0x66B98A1E);
+        for (int i = -2; i <= 2; i++) {
+            double ang = Math.toRadians(270 + i * 16);
+            c.drawLine(cx, cy, cx + (float) Math.cos(ang) * r * 0.85f, cy + (float) Math.sin(ang) * r * 0.85f, paint);
+        }
+        // 叶柄
+        paint.setStrokeWidth(2f);
+        c.drawLine(cx, cy, cx, s * 0.95f, paint);
+        return bmp;
+    }
+
+    /** 孔明灯精灵：渐变纸灯体 + 火芯 + 灯口暗边 + 纸纹，一次性预渲染 */
+    private void ensureLanternSprite() {
+        if (lanternSprite != null) return;
+        int w = 64, h = 84;
+        Bitmap bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888);
+        Canvas c = new Canvas(bmp);
+        paint.reset();
+        paint.setAntiAlias(true);
+        // 外围暖光晕（直接烘进精灵，运行时省绘制调用）
+        paint.setShader(new android.graphics.RadialGradient(w * 0.5f, h * 0.45f, w * 0.75f,
+                new int[]{0x46FFB24D, 0x22FFB24D, 0x00FFB24D},
+                new float[]{0f, 0.55f, 1f}, android.graphics.Shader.TileMode.CLAMP));
+        c.drawCircle(w * 0.5f, h * 0.45f, w * 0.75f, paint);
+        paint.setShader(null);
+        // 灯体：上窄下宽的椭圆纸罩，暖色渐变
+        RectF body = new RectF(w * 0.16f, h * 0.10f, w * 0.84f, h * 0.88f);
+        paint.setShader(new android.graphics.LinearGradient(0, body.top, 0, body.bottom,
+                new int[]{0xFFFFE0A8, 0xFFF7A94E, 0xFFE9802A},
+                new float[]{0f, 0.55f, 1f}, android.graphics.Shader.TileMode.CLAMP));
+        c.drawOval(body, paint);
+        paint.setShader(null);
+        // 竹纹（两条竖向暗纹模拟纸灯骨架）
+        paint.setStyle(Paint.Style.STROKE);
+        paint.setStrokeWidth(1.6f);
+        paint.setColor(0x38A65414);
+        Path crease = new Path();
+        crease.moveTo(w * 0.32f, h * 0.13f);
+        crease.quadTo(w * 0.26f, h * 0.5f, w * 0.32f, h * 0.86f);
+        c.drawPath(crease, paint);
+        crease.reset();
+        crease.moveTo(w * 0.68f, h * 0.13f);
+        crease.quadTo(w * 0.74f, h * 0.5f, w * 0.68f, h * 0.86f);
+        c.drawPath(crease, paint);
+        paint.setStyle(Paint.Style.FILL);
+        // 灯口（底部开口暗边 + 竹圈）
+        paint.setColor(0x905A2E08);
+        c.drawOval(new RectF(w * 0.30f, h * 0.82f, w * 0.70f, h * 0.92f), paint);
+        // 火芯：中心亮点双层
+        paint.setColor(0x66FFF2C8);
+        c.drawCircle(w * 0.5f, h * 0.44f, w * 0.17f, paint);
+        paint.setColor(0xFFFFF6D8);
+        c.drawCircle(w * 0.5f, h * 0.44f, w * 0.10f, paint);
+        lanternSprite = bmp;
     }
 
     @Override
@@ -819,7 +1004,21 @@ public class SkyView extends View {
             zodiacCacheBitmap.recycle();
             zodiacCacheBitmap = null;
         }
+        recycleBitmapQuietly(snowSoftSprite); snowSoftSprite = null;
+        recycleBitmapQuietly(snowCrystalSprite); snowCrystalSprite = null;
+        recycleBitmapQuietly(sakuraSprite); sakuraSprite = null;
+        recycleBitmapQuietly(ginkgoSprite); ginkgoSprite = null;
+        recycleBitmapQuietly(lanternSprite); lanternSprite = null;
         starList.clear();
+    }
+
+    private static void recycleBitmapQuietly(Bitmap b) {
+        if (b != null) {
+            try {
+                b.recycle();
+            } catch (Exception ignored) {
+            }
+        }
     }
 
     // ========== 数据结构 ==========
@@ -844,8 +1043,8 @@ public class SkyView extends View {
     }
 
     private static class WeatherP {
-        float baseX, x, y, vy, size, phase, phaseSpeed, sway;
-        int color, alpha;
+        float baseX, x, y, vy, size, phase, phaseSpeed, sway, depth, rotSpeed;
+        int color, alpha, sprite; // sprite: 0=柔光雪绒 1=晶体雪花 2=樱花瓣 3=银杏叶
     }
 
     // ========== 十二星座简化连线数据（归一化 0~1 坐标 + 连线索引） ==========
