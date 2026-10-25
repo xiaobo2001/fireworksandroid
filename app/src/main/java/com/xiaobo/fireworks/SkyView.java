@@ -49,6 +49,8 @@ public class SkyView extends View {
     private boolean moonEnabled = true;
     private boolean constellationEnabled = true;
     private int[] moodStarColors;                 // 心情染色（空=纯白）
+    // ===== v1.3.0 时段氛围：按真实时间给夜空叠一层极淡的色调（黄昏暖/深夜冷/黎明淡蓝） =====
+    private boolean timeTintAuto = true;
     // ===== 月亮生命周期：月升→拱形轨迹→月落（艺术化节奏，非天文严格） =====
     /** 月亮横跨夜空一趟的时长 ms；0 = 固定在右上角不动。默认 8 分钟。 */
     private int moonMotionPeriodMs = 480_000;
@@ -137,6 +139,11 @@ public class SkyView extends View {
      */
     public void setMoonMotionPeriodMs(int periodMs) {
         this.moonMotionPeriodMs = Math.max(0, periodMs);
+    }
+
+    /** 【v1.3.0】按时段自动叠色（黄昏暖金/深夜冷蓝/黎明淡青），Default true */
+    public void setTimeTintAuto(boolean enabled) {
+        this.timeTintAuto = enabled;
     }
 
     /** 星星抗锯齿（低端机可关闭省填充） */
@@ -354,6 +361,24 @@ public class SkyView extends View {
         drawWeather(canvas);
         drawMeteors(canvas);
         drawLanterns(canvas);
+        if (timeTintAuto) {
+            int tint = timeTintColor();
+            if (tint != 0) {
+                paint.setStyle(Paint.Style.FILL);
+                paint.setAlpha(255);
+                canvas.drawColor(tint);
+            }
+        }
+    }
+
+    /** 黄昏(17-20h)暖金 / 深夜(21-4h)冷蓝 / 黎明(5-8h)淡青，极低透明度不喧宾夺主 */
+    private static int timeTintColor() {
+        java.util.Calendar c = java.util.Calendar.getInstance();
+        int hour = c.get(java.util.Calendar.HOUR_OF_DAY);
+        if (hour >= 17 && hour < 21) return 0x22FF9A3C;   // 黄昏暖金
+        if (hour >= 5 && hour < 9) return 0x14286A8A;      // 黎明淡青
+        if (hour >= 21 || hour < 5) return 0x1A2C4A78;     // 深夜冷蓝
+        return 0;
     }
     @Override
     protected void onSizeChanged(int w, int h, int oldw, int oldh) {
@@ -371,8 +396,13 @@ public class SkyView extends View {
 
     /** 计算当天月龄（天）。已知新月历元 2000-01-06 18:14 UTC，朔望月 29.530588853 天 */
     private float computeMoonAge() {
+        return moonAgeFromMillis(System.currentTimeMillis());
+    }
+
+    /** 朔望月月龄（天）：已知朔日历元 2000-01-06 18:14 UTC，朔望月 29.530588853 天 */
+    static float moonAgeFromMillis(long nowMs) {
         long epochMs = 947182440000L;
-        double age = ((System.currentTimeMillis() - epochMs) / 86400000.0) % 29.530588853;
+        double age = ((nowMs - epochMs) / 86400000.0) % 29.530588853;
         if (age < 0) age += 29.530588853;
         return (float) age;
     }
@@ -517,7 +547,7 @@ public class SkyView extends View {
         return zodiacName;
     }
 
-    private static int zodiacIndex(int m, int d) {
+    static int zodiacIndex(int m, int d) {
         int md = m * 100 + d;
         if (md >= 321 && md <= 419) return 0;   // 白羊
         if (md >= 420 && md <= 520) return 1;   // 金牛

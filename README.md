@@ -525,6 +525,15 @@ rhythm.stop();
 
 ## 📋 版本更新记录 (Changelog)
 
+### v1.3.0（2026-10-25）
+
+**新 API**
+- `FireworkView.setAfterglow(boolean)`：烟花余辉——粒子熄灭时化为约 1 秒渐隐残影，天空蒙上薄纱
+- `GlobalFirework.startAutoShow(pattern, intervalMs)` / `stopAutoShow()`：编舞化随机播放，四种剧本——经典随机 / 波浪扫射 / 环形聚拢 / 跟随 RhythmFirework 音乐节拍
+- `GlobalFirework.playHeartbeatVibration()`："咚-咚"心跳节奏震动（告白场景）
+- `SkyView.setTimeTintAuto(boolean)`：按时段自动叠色（黄昏暖金 / 深夜冷蓝 / 黎明淡青），Default 开启，App 与壁纸同时生效
+- 算法静态化 + 单元测试：星座日期分界与朔望月月龄（`SkyAlgorithmTest`）
+
 ### v1.2.4（2026-10-25）
 
 - 孔明灯体放大 40%：灯口暗边、竹纹骨架、火芯等精灵细节在运行尺寸下清晰可辨

@@ -24,7 +24,10 @@ public class FireworkView extends View {
 
     private static final int DEFAULT_MAX_PARTICLES = 5000;
     /** 可配置的粒子数上限（低配设备可调小以降低满帧绘制压力），最小 200 */
+    /** 粒子数上限可调（低配设备可调小），最小 200 */
     private int maxParticles = DEFAULT_MAX_PARTICLES;
+    /** 【v1.3.0】余辉：粒子熄灭时化为缓慢消散的残影， Default false（关闭时行为与原版一致） */
+    private boolean afterglow = false;
     private final List<Particle> activeParticles = new ArrayList<>(512);
     private final Queue<Particle> particlePool = new ArrayDeque<>(256);
     private final Paint paint = new Paint();
@@ -83,6 +86,11 @@ public class FireworkView extends View {
 
     public int getMaxParticles() {
         return maxParticles;
+    }
+
+    /** 【v1.3.0】开启/关闭余辉：粒子熄灭后留下约 1 秒渐隐残影 */
+    public void setAfterglow(boolean enabled) {
+        this.afterglow = enabled;
     }
 
     public void stop() {
@@ -152,9 +160,15 @@ public class FireworkView extends View {
             if (!alive) {
                 if (p.type == 2 && p.tag instanceof FireworkConfig) {
                     pendingExplosions.add(new ExplosionTask(p.x, p.y, (FireworkConfig) p.tag));
+                    iterator.remove();
+                    recycleParticle(p);
+                } else if (afterglow && p.type != 3 && p.type != 2 && random.nextInt(3) == 0) {
+                    // 余辉：熄灭粒子转化为原地渐隐的残影（type 3）
+                    p.reset(p.x, p.y, 0f, 0f, p.color, Math.max(1f, p.size * 0.45f), 0.016f, 3, 0f);
+                } else {
+                    iterator.remove();
+                    recycleParticle(p);
                 }
-                iterator.remove();
-                recycleParticle(p);
             }
         }
 
@@ -191,6 +205,13 @@ public class FireworkView extends View {
     }
 
     private void drawParticle(Canvas canvas, Particle p, int canvasWidth, int canvasHeight) {
+        if (p.type == 3) {
+            // 余辉残影：小圆点原地渐隐
+            paint.setColor(p.color);
+            paint.setAlpha((int) (255 * p.life * 0.8f));
+            canvas.drawCircle(p.x, p.y, p.size, paint);
+            return;
+        }
         float trailX = p.x;
         float trailY = p.y;
         boolean drawTrail = (p.type != 2) && (p.trailScale > 0.1f);
@@ -446,9 +467,13 @@ public class FireworkView extends View {
 
         /**
          * 按时间补偿步进。step=1 与原版"每动画帧走一步"完全等价；
-         * step 为真实帧间隔相对 60fps 的倍率，dampFactor 为按 step 折算后的阻尼系数。
+         * type 3 为余辉残影：原地不动，仅寿命衰减。
          */
         boolean update(Random random, float step, float dampFactor) {
+            if (type == 3) {
+                life -= decay * step;
+                return life > 0;
+            }
             x += vx * step;
             y += vy * step;
             if (type == 2) {

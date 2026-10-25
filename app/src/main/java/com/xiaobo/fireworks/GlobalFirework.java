@@ -298,8 +298,7 @@ public class GlobalFirework {
      * 反馈防抖：高频连续绽放只保留间隔内的首次反馈。
      * synchronized：App 主线程与壁纸绘制线程都可能调用。
      */
-    private synchronized void playFeedback() {
-        long now = SystemClock.elapsedRealtime();
+    private synchronized void playFeedback() {        long now = SystemClock.elapsedRealtime();
         if (now - lastFeedbackMs < feedbackIntervalMs) {
             return;
         }
@@ -318,6 +317,151 @@ public class GlobalFirework {
                 else vibrator.vibrate(15);
             }
         }
+    }
+
+    /**
+     * 【v1.3.0】心跳震动："咚-咚"双击节奏（用于告白文字展示等需要情绪节奏的场景）。
+     * 遵循振动开关与防抖间隔。
+     */
+    public void playHeartbeatVibration() {
+        long now = SystemClock.elapsedRealtime();
+        if (now - lastFeedbackMs < 400L) return;
+        lastFeedbackMs = now;
+        if (vibrator == null || !vibrationEnabled) return;
+        if (hasVibratorCache == null) hasVibratorCache = vibrator.hasVibrator();
+        if (hasVibratorCache) {
+            long[] pattern = {0, 110, 170, 230}; // 咚-(停)-咚
+            if (Build.VERSION.SDK_INT >= 26) {
+                vibrator.vibrate(VibrationEffect.createWaveform(pattern, -1));
+            } else {
+                vibrator.vibrate(pattern, -1);
+            }
+        }
+    }
+
+    // ===== v1.3.0 编舞化随机播放 =====
+
+    public static final int PATTERN_CLASSIC = 0;   // 经典：随机位置随机样式
+    public static final int PATTERN_WAVE = 1;      // 波浪：左→右扫射推进
+    public static final int PATTERN_CONVERGE = 2;  // 聚拢：环形布点向中心汇
+    public static final int PATTERN_RHYTHM = 3;    // 节拍：跟随 RhythmFirework 音乐律动
+
+    private Runnable autoShowTask;
+    private int autoPattern = PATTERN_CLASSIC;
+    private int autoIntervalMs = 700;
+    private float showAngle = 0f;
+    private int showTick = 0;
+
+    /**
+     * 【v1.3.0】编舞化随机播放（替代应用侧无章法的定时乱放）。
+     * @param pattern PATTERN_CLASSIC / WAVE / CONVERGE / RHYTHM
+     * @param intervalMs 每次绽放间隔 ms（RHYTHM 模式下作为无律动时的兑底间隔）
+     */
+    public void startAutoShow(int pattern, int intervalMs) {
+        stopAutoShow();
+        autoPattern = pattern;
+        autoIntervalMs = Math.max(300, intervalMs);
+        if (pattern == PATTERN_RHYTHM && RhythmFirework.getInstance().isRunning()) {
+            RhythmFirework.getInstance().setOnBeatListener(amp -> autoShowBeatBloom());
+            autoShowTask = new Runnable() {
+                @Override public void run() {
+                    // 兑底：律动未触发时低频绽放
+                    mainHandler.postDelayed(this, autoIntervalMs * 3);
+                }
+            };
+            mainHandler.postDelayed(autoShowTask, autoIntervalMs * 3);
+        } else {
+            autoShowTask = new Runnable() {
+                @Override public void run() {
+                    autoShowStep();
+                    mainHandler.postDelayed(this, autoIntervalMs);
+                }
+            };
+            mainHandler.post(autoShowTask);
+        }
+    }
+
+    public void stopAutoShow() {
+        if (autoPattern == PATTERN_RHYTHM) {
+            RhythmFirework.getInstance().setOnBeatListener(null);
+        }
+        if (autoShowTask != null) {
+            mainHandler.removeCallbacks(autoShowTask);
+            autoShowTask = null;
+        }
+    }
+
+    public boolean isAutoShowRunning() {
+        return autoShowTask != null;
+    }
+
+    private void autoShowBeatBloom() {
+        FireworkView view = getCurrentFireworkView();
+        if (view == null) return;
+        int w = Math.max(1, view.getWidth());
+        int h = Math.max(1, view.getHeight());
+        showTick++;
+        float px = w * (0.5f + 0.4f * (float) Math.sin(showTick * 0.6f));
+        float py = h * (0.3f + 0.2f * (float) Math.sin(showTick * 1.1f + 1.5f));
+        view.launch(px, py, randomShowConfig(0.8f));
+        if (showTick % 5 == 0) playFeedback();
+    }
+
+    private void autoShowStep() {
+        FireworkView view = getCurrentFireworkView();
+        if (view == null) return;
+        int w = Math.max(1, view.getWidth());
+        int h = Math.max(1, view.getHeight());
+        showTick++;
+        switch (autoPattern) {
+            case PATTERN_WAVE: {
+                showAngle += 0.35f;
+                float px = w * (0.5f + 0.46f * (float) Math.sin(showAngle));
+                float py = h * (0.30f + 0.22f * (float) Math.sin(showAngle * 0.7f));
+                view.launch(px, py, randomShowConfig(0.9f));
+                break;
+            }
+            case PATTERN_CONVERGE: {
+                showAngle += 0.5f;
+                float shrink = 0.5f + 0.5f * ((float) Math.sin(showAngle) + 1f) * 0.5f;
+                int points = 5;
+                for (int i = 0; i < points; i++) {
+                    double a = 2 * Math.PI * i / points + showAngle * 0.2;
+                    view.launch(w * 0.5f + (float) Math.cos(a) * w * 0.34f * shrink,
+                            h * 0.34f + (float) Math.sin(a) * h * 0.2f * shrink, randomShowConfig(0.55f));
+                }
+                break;
+            }
+            case PATTERN_RHYTHM: {
+                // 律动未运行时兑底为波浪
+                showAngle += 0.35f;
+                float px = w * (0.5f + 0.46f * (float) Math.sin(showAngle));
+                view.launch(px, h * 0.32f, randomShowConfig(0.9f));
+                break;
+            }
+            default: {
+                view.launch(w * (0.1f + showRandom.nextFloat() * 0.8f),
+                        h * (0.1f + showRandom.nextFloat() * 0.5f), randomShowConfig(0.8f));
+            }
+        }
+        if (showTick % 5 == 0) playFeedback();
+    }
+
+    private final java.util.Random showRandom = new java.util.Random();
+
+    private FireworkConfig randomShowConfig(float scale) {
+        int hue = showRandom.nextInt(360);
+        return new FireworkConfig.Builder()
+                .colors(hueColor(hue), hueColor((hue + 45) % 360))
+                .count((int) (45 + showRandom.nextInt(35) * scale))
+                .range(0.9f + showRandom.nextFloat() * 0.4f)
+                .trail(1.1f)
+                .build();
+    }
+
+    private static int hueColor(int hue) {
+        float[] hsv = {hue, 0.75f, 1f};
+        return android.graphics.Color.HSVToColor(hsv);
     }
 }
 
