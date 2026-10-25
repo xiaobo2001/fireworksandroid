@@ -187,7 +187,7 @@ public class SkyView extends View {
         // 直接在点击处点亮（灯体主体略偏下，视觉上像从手中放起）
         l.y = Math.min(y, fieldHeight - 40f);
         l.vy = -(0.55f + random.nextFloat() * 0.5f);   // 60fps 基准每帧上升像素
-        l.size = 9f + random.nextFloat() * 6f;
+        l.size = 11f + random.nextFloat() * 6f;
         l.swayAmp = 8f + random.nextFloat() * 14f;
         l.swayPhase = random.nextFloat() * 6.28f;
         l.swaySpeed = 0.012f + random.nextFloat() * 0.014f;
@@ -732,7 +732,7 @@ public class SkyView extends View {
             int a = (int) (255 * l.alpha * flicker);
             // 呼吸微缩放：灯火轻盈摇曳感
             float pulse = 1f + 0.04f * (float) Math.sin(l.swayPhase * 5f);
-            float w = l.size * 3.4f * pulse;
+            float w = l.size * 4.0f * pulse;
             float h = w * (84f / 64f);
             spriteDest.set(drawX - w * 0.5f, l.y - h * 0.5f, drawX + w * 0.5f, l.y + h * 0.5f);
             paint.setAlpha(Math.max(0, Math.min(255, a)));
