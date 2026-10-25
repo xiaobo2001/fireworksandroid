@@ -10,6 +10,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.SystemClock;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.view.View;
@@ -25,6 +26,17 @@ public class GlobalFirework {
     private int soundId = -1;
     private Vibrator vibrator;
     private boolean isInit = false;
+
+    // ===== 反馈（音效/震动）控制与防抖 =====
+    // 高频连续绽放（如轨迹动画、多点齐射）时逐次触发 SoundPool.play 与震动 Binder
+    // 调用是主线程卡顿与耗电的大头；防抖后仅保留间隔内的首次反馈，单次点击不受影响。
+    /** 反馈防抖间隔 ms；0 = 每次绽放都反馈（旧行为） */
+    private volatile int feedbackIntervalMs = 120;
+    private volatile boolean soundEnabled = true;
+    private volatile boolean vibrationEnabled = true;
+    private volatile float soundVolume = 0.5f;
+    private long lastFeedbackMs = 0L;
+    private Boolean hasVibratorCache; // 只探测一次，不再逐次 Binder 调用
 
     // 壁纸模式专属渲染实例，与App内完全隔离
     private FireworkView wallpaperFireworkView;
@@ -226,15 +238,81 @@ public class GlobalFirework {
         }
     }
 
-    private void playFeedback() {
-        // 空值兜底，所有场景安全
-        if (soundPool != null && soundId != -1) {
-            soundPool.play(soundId, 0.5f, 0.5f, 1, 0, 1.0f);
+    /**
+     * 【新增】无反馈发射：粒子效果与 bloom 完全一致，但不触发音效与震动。
+     * 适合高频连续发射场景（轨迹动画、粒子雨等），彻底免除逐次系统调用。
+     */
+    public void bloomSilently(float x, float y) {
+        bloomSilently(x, y, null);
+    }
+
+    /**
+     * 【新增】无反馈发射：粒子效果与 bloom 完全一致，但不触发音效与震动。
+     */
+    public void bloomSilently(float x, float y, FireworkConfig config) {
+        FireworkView view = getCurrentFireworkView();
+        if (view != null) {
+            view.launch(x, y, config);
         }
-        if (vibrator != null && vibrator.hasVibrator()) {
-            if (Build.VERSION.SDK_INT >= 26)
-                vibrator.vibrate(VibrationEffect.createOneShot(15, 80));
-            else vibrator.vibrate(15);
+    }
+
+    /**
+     * 【新增】设置反馈防抖间隔 ms（0 = 每次绽放都反馈，即 v1.0.9 及以前的旧行为）。
+     * 连续绽放频繁时，反馈最多以此间隔触发一次，消除高频 Binder 调用。
+     */
+    public void setFeedbackIntervalMs(int intervalMs) {
+        this.feedbackIntervalMs = Math.max(0, intervalMs);
+    }
+
+    /** 【新增】单独开关音效 */
+    public void setSoundEnabled(boolean enabled) {
+        this.soundEnabled = enabled;
+    }
+
+    /** 【新增】单独开关震动 */
+    public void setVibrationEnabled(boolean enabled) {
+        this.vibrationEnabled = enabled;
+    }
+
+    /** 【新增】设置音效音量 0~1（默认 0.5） */
+    public void setSoundVolume(float volume) {
+        this.soundVolume = Math.min(1f, Math.max(0f, volume));
+    }
+
+    /**
+     * 【新增】设置粒子上限（当前 Activity 视图与壁纸视图同时生效，最小 200）。
+     * 低配设备可调小以降低满帧绘制压力。
+     */
+    public void setMaxParticles(int max) {
+        FireworkView view = getCurrentFireworkView();
+        if (view != null) view.setMaxParticles(max);
+        if (wallpaperFireworkView != null) wallpaperFireworkView.setMaxParticles(max);
+    }
+
+    /**
+     * 反馈防抖：高频连续绽放只保留间隔内的首次反馈。
+     * synchronized：App 主线程与壁纸绘制线程都可能调用。
+     */
+    private synchronized void playFeedback() {
+        long now = SystemClock.elapsedRealtime();
+        if (now - lastFeedbackMs < feedbackIntervalMs) {
+            return;
+        }
+        lastFeedbackMs = now;
+
+        if (soundPool != null && soundId != -1 && soundEnabled) {
+            soundPool.play(soundId, soundVolume, soundVolume, 1, 0, 1.0f);
+        }
+        if (vibrator != null && vibrationEnabled) {
+            if (hasVibratorCache == null) {
+                hasVibratorCache = vibrator.hasVibrator();
+            }
+            if (hasVibratorCache) {
+                if (Build.VERSION.SDK_INT >= 26)
+                    vibrator.vibrate(VibrationEffect.createOneShot(15, 80));
+                else vibrator.vibrate(15);
+            }
         }
     }
 }
+

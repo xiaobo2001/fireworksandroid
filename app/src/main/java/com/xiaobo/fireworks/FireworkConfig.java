@@ -52,8 +52,10 @@ public class FireworkConfig {
 
         /** 设置形状 */
         public Builder shape(Shape shape) { this.shape = shape; return this; }
-        /** 设置烟花文字内容 (当shape为TEXT时生效) */
+        /** 文字烟花内容 (当shape为TEXT时生效) */
         public Builder text(String text) { this.text = text; return this; }
+        /** 【新增】文字采样字号 (当shape为TEXT时生效，越大粒子越密) */
+        public Builder textSize(float textSize) { this.textSize = textSize; return this; }
         public Builder rocket(boolean enable) { this.launchRocket = enable; return this; }
 
         public FireworkConfig build() { return new FireworkConfig(this); }

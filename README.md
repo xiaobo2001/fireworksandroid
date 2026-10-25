@@ -38,7 +38,7 @@ dependencyResolutionManagement {
 
 ```groovy
 dependencies {
-    implementation 'com.github.xiaobo2001:fireworksandroid:v1.0.1' // 请使用最新版本
+    implementation 'com.github.xiaobo2001:fireworksandroid:v1.1.0' // 请使用最新版本
 }
 ```
 
@@ -79,6 +79,26 @@ view.setOnTouchListener((v, event) -> {
     }
     return true;
 });
+```
+
+### 3.1 无反馈发射（高频连续场景推荐）
+
+`bloomSilently` 的粒子效果与 `bloom` 完全一致，但不触发音效与震动，适合轨迹动画、粒子雨等每秒数十次发射的场景，彻底免除逐次 SoundPool/震动 Binder 调用带来的卡顿与耗电：
+
+```java
+GlobalFirework.getInstance().bloomSilently(x, y, config);
+```
+
+### 3.2 反馈控制（音效/震动/音量/防抖）
+
+```java
+GlobalFirework gf = GlobalFirework.getInstance();
+
+gf.setSoundEnabled(false);          // 单独关闭音效
+gf.setVibrationEnabled(false);      // 单独关闭震动
+gf.setSoundVolume(0.8f);            // 音效音量 0~1，默认 0.5
+gf.setFeedbackIntervalMs(120);      // 反馈防抖间隔 ms，默认 120；设 0 恢复旧版逐次反馈
+gf.setMaxParticles(3000);           // 粒子上限（默认 5000，低配设备可调小降负载，最小 200）
 ```
 
 ---
@@ -161,6 +181,7 @@ FireworkConfig rocketConfig = new FireworkConfig.Builder()
 | `sparkle(boolean)` | 是否生成额外的白色闪烁微粒 | true | true / false |
 | `shape(Shape)` | 设置烟花爆炸形状 | `Shape.CIRCLE` | CIRCLE / HEART / STAR / TEXT |
 | `text(String)` | 文字烟花的显示内容（仅 TEXT 形状生效） | `"A"` | 任意字符串 |
+| `textSize(float)` | 文字采样字号（仅 TEXT 形状生效，越大粒子越密） | `100f` | 60 - 240 |
 | `rocket(boolean)` | 是否开启火箭上升后爆炸的发射动画 | `false` | true / false |
 
 ---
@@ -249,13 +270,14 @@ btn.setOnClickListener(v -> {
 
 1.  **权限**：库内部已包含 `<uses-permission android:name="android.permission.VIBRATE" />`，无需手动添加。
 2.  **生命周期**：库会自动监听 Activity 的 `onPause`，页面不可见时自动停止渲染循环，无需担心耗电。
-3.  **文字烟花性能**：文字内容越长、字体越大，生成的粒子数量越多，建议单字或短文本效果最佳，避免过长文字导致粒子数超出上限。
+3.  **文字烟花性能**：文字内容越长、字体越大，生成的粒子数量越多，建议单字或短文本效果最佳，避免过长文字导致粒子数超出上限。相同文字/字号的连续爆炸会自动复用采样栅格，开销很低。
 4.  **混淆 (Proguard)**：本库不含反射，一般无需配置。如遇问题可添加：
     ```proguard
     -keep class com.xiaobo.fireworks.** { *; }
     ```
 5.  **Z轴层级**：在 Android 5.0+ 设备上，烟花视图会自动设置 `elevation` 为 100f，确保浮在大部分 UI 之上。
-6.  **粒子上限**：全局最大粒子数为 1500，超出时新的烟花会被丢弃，避免同时触发大量烟花造成卡顿。
+6.  **粒子上限**：默认全局最大粒子数为 5000（可通过 `setMaxParticles` 调整，最小 200），超出时新的烟花会被丢弃，避免同时触发大量烟花造成卡顿。
+7.  **刷新率适配**：v1.1.0 起物理步进按真实帧间隔自动补偿，以 60fps 为基准：90/120Hz 高刷屏上烟花速度/衰减与 60Hz 完全一致，低帧率下也不会变慢。
 
 ---
 
