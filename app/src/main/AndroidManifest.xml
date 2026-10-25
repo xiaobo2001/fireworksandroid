@@ -3,5 +3,7 @@
 
     <!-- 只需要保留权限声明 -->
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- v1.2.0 音乐律动（RhythmFirework 监听麦克风振幅）需要；运行时权限由接入方申请 -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <application />
 </manifest>

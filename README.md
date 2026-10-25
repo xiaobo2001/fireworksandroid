@@ -17,6 +17,8 @@
 *   **🔇 无反馈发射**：`bloomSilently` 适合轨迹动画、粒子雨等高频连续发射场景，免除逐次系统调用。
 *   **📳 多感官反馈**：自定义音效 + 细腻震动，内置防抖与音效/震动/音量独立开关。
 *   **🖼️ 动态壁纸支持**：离屏渲染 API，可与 `WallpaperService` 无缝集成。
+*   **🌌 夜空大气层（v1.2.0）**：`SkyView` 一行接入星空+流星+孔明灯+天气粒子(雪/樱花/银杏)+真实月相月亮+当日星座连线，App/壁纸双模式，帧率时间补偿。
+*   **🎵 音乐律动（v1.2.0）**：`RhythmFirework` 监听麦克风振幅自适应检测节拍，随背景音乐自动绽放烟花。
 *   **🛠️ 简单易用**：一行代码默认触发，也支持高阶配置触发。
 
 ---
@@ -474,12 +476,62 @@ fireworkView.resume();             // 恢复
 
 ---
 
+## 🌌 9. 夜空大气层 SkyView (v1.2.0)
+
+`SkyView` 提供一整套夜空氛围效果，可直接替换/叠加在烟花层之下：星空（闪烁漂移）、随机流星、孔明灯、天气粒子（雪/樱花/银杏）、按当天真实月相绘制的月亮、当日星座连线。加入布局后自动驱动（帧率时间补偿，高刷屏不加速）。
+
+```java
+SkyView skyView = findViewById(R.id.sky_view);
+// 可选调优（也可全部默认）
+skyView.setStarCount(120);
+skyView.setFrameIntervalMs(33);            // 低端机 30fps 节流，速率不变
+skyView.setAutoMeteorIntervalMs(5000, 5000);  // 随机流星：5-10 秒一颗
+skyView.setAutoLanternIntervalMs(45000, 30000); // 环境孔明灯自动升空
+skyView.setWeather(SkyView.WEATHER_SNOW); // NONE / SNOW / SAKURA / GINKGO
+skyView.setMoonEnabled(true);             // 真实月相月亮
+skyView.setConstellationEnabled(true);    // 当日星座连线
+skyView.setMoodStarColors(new int[]{0xFFFF6B81, 0xFF6BC5FF}); // 心情染色星
+
+// 点击放灯：在你的触摸事件里调
+skyView.releaseLantern(event.getX(), event.getY());
+// 手动触发一颗流星
+skyView.spawnMeteor();
+// 当前星座名（如“狮子”）
+String zodiac = skyView.getCurrentZodiacName();
+
+// 生命周期
+skyView.startSky();   // 显示并继续
+skyView.stopSky();    // 暂停并隐藏
+
+// 离屏/壁纸模式：setSize(w,h) + updateSky(scale) + drawSky(canvas)（scale=真实帧间隔/16.67ms）
+```
+
+## 🎵 10. 音乐律动 RhythmFirework (v1.2.0)
+
+监听麦克风振幅，自适应阈值检测音乐节拍，节拍时自动绽放烟花（外放背景音乐即可触发；需 RECORD_AUDIO 运行时权限，库已在 Manifest 声明）。
+
+```java
+// 权限需已授予（ActivityCompat.checkSelfPermission + requestPermissions）
+RhythmFirework rhythm = RhythmFirework.getInstance();
+rhythm.setSensitivity(1.2f);   // 0.5 钝 ~ 2 灵敏
+rhythm.setAutoBloom(true);    // 节拍自动绽放（也可 setBloomConfig 自定义样式）
+rhythm.start(context);        // 返回 false = 权限/设备不可用
+...
+rhythm.stop();
+// 或仅监听节拍自定义联动：rhythm.setOnBeatListener(amp -> ...)
+```
+
+---
+
 ## 📋 版本更新记录 (Changelog)
 
 ### v1.2.0（2026-10-25）
 
 **新增 API**
 - `FireworkConfig.Shape.CUSTOM` + `Builder.shapeBitmap(Bitmap)`：任意图形烟花，按位图不透明像素采样生成粒子（同一位图缓存采样结果，重复绽放零开销）
+- `SkyView`：夜空大气层（星空+流星+孔明灯+天气粒子雪/樱花/银杏+真实月相月亮+当日星座连线），View/离屏双模式，全套配置 API
+- `RhythmFirework`：麦克风振幅节拍检测 + 自动绽放，自适应阈值，支持灵敏度/样式/回调定制
+- `GlobalFirework.getFireworkView()`：获取当前附着的渲染器
 
 ### v1.1.0（2026-10-25）
 

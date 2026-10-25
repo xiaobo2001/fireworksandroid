@@ -225,6 +225,11 @@ public class GlobalFirework {
         return (currentViewRef != null) ? currentViewRef.get() : null;
     }
 
+    /** 【v1.2.0】获取当前 Activity 附着的全屏烟花渲染器（离屏/壁纸模式请自行持有 FireworkView） */
+    public FireworkView getFireworkView() {
+        return getCurrentFireworkView();
+    }
+
     public void bloom(float x, float y) {
         bloom(x, y, null);
     }
