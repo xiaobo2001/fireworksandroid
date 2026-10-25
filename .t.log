@@ -8,17 +8,16 @@ Daemon will be stopped at the end of the build
 > Task :app:parseReleaseLocalResources UP-TO-DATE
 > Task :app:generateReleaseRFile UP-TO-DATE
 > Task :app:javaPreCompileRelease UP-TO-DATE
-
 > Task :app:compileReleaseJavaWithJavac
-注: D:\fireworks\app\src\main\java\com\xiaobo\fireworks\GlobalFirework.java使用或覆盖了已过时的 API。
-注: 有关详细信息, 请使用 -Xlint:deprecation 重新编译。
-
 > Task :app:preReleaseUnitTestBuild UP-TO-DATE
-> Task :app:bundleLibRuntimeToJarRelease
 > Task :app:bundleLibCompileToJarRelease
+> Task :app:bundleLibRuntimeToJarRelease
+> Task :app:generateReleaseUnitTestStubRFile UP-TO-DATE
+> Task :app:javaPreCompileReleaseUnitTest UP-TO-DATE
+> Task :app:compileReleaseUnitTestJavaWithJavac UP-TO-DATE
 > Task :app:processReleaseJavaRes NO-SOURCE
-> Task :app:javaPreCompileReleaseUnitTest
 > Task :app:processReleaseUnitTestJavaRes NO-SOURCE
+> Task :app:testReleaseUnitTest
 > Task :app:mergeReleaseJniLibFolders UP-TO-DATE
 > Task :app:mergeReleaseNativeLibs NO-SOURCE
 > Task :app:stripReleaseDebugSymbols NO-SOURCE
@@ -37,15 +36,11 @@ Daemon will be stopped at the end of the build
 > Task :app:mergeReleaseJavaResource UP-TO-DATE
 > Task :app:syncReleaseLibJars
 > Task :app:writeReleaseAarMetadata UP-TO-DATE
-> Task :app:generateReleaseUnitTestStubRFile
 > Task :app:bundleReleaseAar
-> Task :app:compileReleaseUnitTestJavaWithJavac
-> Task :app:testReleaseUnitTest
 > Task :app:mapReleaseSourceSetPaths UP-TO-DATE
 > Task :app:mergeReleaseResources UP-TO-DATE
 > Task :app:verifyReleaseResources UP-TO-DATE
 > Task :app:assembleRelease
-[Incubating] Problems report is available at: file:///D:/fireworks/build/reports/problems/problems-report.html
 
-BUILD SUCCESSFUL in 34s
-31 actionable tasks: 10 executed, 21 up-to-date
+BUILD SUCCESSFUL in 32s
+31 actionable tasks: 7 executed, 24 up-to-date
