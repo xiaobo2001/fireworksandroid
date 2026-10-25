@@ -6,7 +6,9 @@ import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
+import android.graphics.Path;
 import android.graphics.RectF;
+import android.os.SystemClock;
 import android.util.AttributeSet;
 import android.view.View;
 import android.view.animation.LinearInterpolator;
@@ -47,6 +49,10 @@ public class SkyView extends View {
     private boolean moonEnabled = true;
     private boolean constellationEnabled = true;
     private int[] moodStarColors;                 // 心情染色（空=纯白）
+    // ===== 月亮生命周期：月升→拱形轨迹→月落（艺术化节奏，非天文严格） =====
+    /** 月亮横跨夜空一趟的时长 ms；0 = 固定在右上角不动。默认 8 分钟。 */
+    private int moonMotionPeriodMs = 480_000;
+    private long moonMotionBaseMs = 0L;
 
     // ===== 状态 =====
     private final List<Star> starList = new ArrayList<>(128);
@@ -114,6 +120,14 @@ public class SkyView extends View {
 
     private void invalidateCelestialCache() {
         cacheW = 0;
+    }
+
+    /**
+     * 月亮生命周期：设置月升月落周期。0 = 固定右上角（v1.2.1 及以前行为）。
+     * 默认 8 分钟一趟：从左侧升起、拱形轨迹越过夜空、右侧落下，升起/落下时渐隐。
+     */
+    public void setMoonMotionPeriodMs(int periodMs) {
+        this.moonMotionPeriodMs = Math.max(0, periodMs);
     }
 
     /** 星星抗锯齿（低端机可关闭省填充） */
@@ -379,29 +393,69 @@ public class SkyView extends View {
         Canvas c = new Canvas(bmp);
         float cx = size / 2f, cy = size / 2f;
 
+        // ===== 真实月相：亮面比例 + 盈亏方向 =====
+        // k∈[0,1]：0 新月 → 0.5 弦月 → 1 满月；盈月（上半周期）亮面在右，亏月亮面在左
+        double phaseAngle = 2 * Math.PI * moonAgeDays / 29.530588853;
+        float k = (float) ((1 - Math.cos(phaseAngle)) / 2);
+        boolean waxing = moonAgeDays < 14.765f;
+
         paint.setStyle(Paint.Style.FILL);
         paint.setAntiAlias(true);
-        // 光晕
+        // 1. 光晕
         paint.setColor(0xFFF7F3DC);
         paint.setAlpha(26);
         c.drawCircle(cx, cy, r * 2.6f, paint);
         paint.setAlpha(52);
         c.drawCircle(cx, cy, r * 1.7f, paint);
-        // 月面
-        paint.setColor(0xFFF5EFCE);
-        paint.setAlpha(235);
+
+        // 2. 地照：暗面隐约可见（真实“新月抱旧月”效果，新月也不至于完全消失）
+        paint.setColor(0xFF2A3550);
+        paint.setAlpha(85);
         c.drawCircle(cx, cy, r, paint);
-        // 月相阴影：按亮比例画偏移暗圆，近似弦月/凸月
-        float frac = (1f - (float) Math.cos(2 * Math.PI * moonAgeDays / 29.530588853)) / 2f;
-        if (frac < 0.98f) {
-            float offset = (1f - frac) * 2f * r + r * 0.08f;
-            boolean waxing = moonAgeDays < 14.765f;
-            paint.setColor(0xFF001020);
-            paint.setAlpha(200);
-            c.drawCircle(cx + (waxing ? -offset : offset), cy, r, paint);
-            paint.setAlpha(90);
-            c.drawCircle(cx + (waxing ? -offset * 1.06f : offset * 1.06f), cy, r * 0.98f, paint);
+
+        // 3. 亮面：真实明暗界线（外半圆 + 椭圆弧界线，自动覆盖全部 8 个月相阶段）
+        //    界线椭圆半宽 = r·|2k-1|：弦月时退化为直线（真正的半圆）
+        float wSemi = Math.abs(r * (2 * k - 1));
+        RectF circleRect = new RectF(cx - r, cy - r, cx + r, cy + r);
+        Path lit = new Path();
+        if (waxing) {
+            // 亮面在右：右半圆（顶→底），界线从底回顶
+            lit.arcTo(circleRect, -90, 180);
+            if (wSemi < 0.5f) {
+                lit.lineTo(cx, cy - r); // 恰好弦月：直线界线
+            } else {
+                RectF termRect = new RectF(cx - wSemi, cy - r, cx + wSemi, cy + r);
+                lit.arcTo(termRect, 90, k >= 0.5f ? 180 : -180); // 盈凸向左鼓 / 娥眉向右凹
+            }
+        } else {
+            // 亮面在左：左半圆（底→顶），界线从顶回底
+            lit.arcTo(circleRect, 90, 180);
+            if (wSemi < 0.5f) {
+                lit.lineTo(cx, cy + r);
+            } else {
+                RectF termRect = new RectF(cx - wSemi, cy - r, cx + wSemi, cy + r);
+                lit.arcTo(termRect, -90, k >= 0.5f ? 180 : -180);
+            }
         }
+        lit.close();
+        paint.setColor(0xFFF2ECD3);
+        paint.setAlpha(255);
+        c.drawPath(lit, paint);
+
+        // 4. 月海纹理（只出现在亮面内，模拟环形山阴影）
+        c.save();
+        c.clipPath(lit);
+        paint.setColor(0xFFB9B29A);
+        paint.setAlpha(60);
+        c.drawCircle(cx - r * 0.18f, cy - r * 0.28f, r * 0.30f, paint);
+        c.drawCircle(cx + r * 0.30f, cy + r * 0.10f, r * 0.22f, paint);
+        c.drawCircle(cx - r * 0.38f, cy + r * 0.30f, r * 0.17f, paint);
+        c.drawCircle(cx + r * 0.05f, cy + r * 0.45f, r * 0.13f, paint);
+        c.drawCircle(cx + r * 0.45f, cy - r * 0.32f, r * 0.12f, paint);
+        paint.setAlpha(26);
+        c.drawCircle(cx - r * 0.05f, cy + r * 0.05f, r * 0.5f, paint);
+        c.restore();
+
         moonCacheBitmap = bmp;
     }
 
@@ -409,10 +463,27 @@ public class SkyView extends View {
         ensureCelestialCache(w, h);
         if (moonCacheBitmap == null) return;
         paint.setStyle(Paint.Style.FILL);
-        paint.setAlpha(255);
         paint.setFilterBitmap(true);
-        canvas.drawBitmap(moonCacheBitmap, w * 0.84f - moonCacheBitmap.getWidth() * 0.5f,
-                h * 0.14f - moonCacheBitmap.getHeight() * 0.5f, paint);
+        float cx, cy;
+        int alpha = 255;
+        if (moonMotionPeriodMs <= 0) {
+            // 固定模式：右上角（旧行为）
+            cx = w * 0.84f;
+            cy = h * 0.14f;
+        } else {
+            // 生命周期模式：月升→拱形轨迹→月落，升起/落下时渐隐
+            long now = SystemClock.elapsedRealtime();
+            if (moonMotionBaseMs == 0L) moonMotionBaseMs = now;
+            float p = ((now - moonMotionBaseMs) % moonMotionPeriodMs) / (float) moonMotionPeriodMs;
+            float bw = moonCacheBitmap.getWidth();
+            cx = -bw + p * (w + bw * 2f);                        // 左入右出
+            cy = h * 0.32f - (float) Math.sin(p * Math.PI) * h * 0.18f; // 拱形轨迹，拱顶 ≈0.14h
+            if (p < 0.08f) alpha = (int) (255 * (p / 0.08f));
+            else if (p > 0.92f) alpha = (int) (255 * ((1f - p) / 0.08f));
+        }
+        paint.setAlpha(Math.max(0, Math.min(255, alpha)));
+        canvas.drawBitmap(moonCacheBitmap, cx - moonCacheBitmap.getWidth() * 0.5f,
+                cy - moonCacheBitmap.getHeight() * 0.5f, paint);
     }
 
     // ========== 当日星座（按真实日期） ==========

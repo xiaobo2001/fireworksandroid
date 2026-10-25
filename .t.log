@@ -34,5 +34,5 @@ Daemon will be stopped at the end of the build
 > Task :app:verifyReleaseResources UP-TO-DATE
 > Task :app:assembleRelease
 
-BUILD SUCCESSFUL in 16s
+BUILD SUCCESSFUL in 22s
 25 actionable tasks: 4 executed, 21 up-to-date
