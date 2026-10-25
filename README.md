@@ -9,7 +9,7 @@
 ## ✨ 特性 (Features)
 
 *   **🎨 高度自定义**：通过 `FireworkConfig` 配置颜色、数量、范围、拖尾、时长、形状等。
-*   **🎯 多元爆炸形态**：内置圆形、爱心、五角星、自定义文字 4 种烟花形状，适配节日、告白、祝福等不同场景。
+*   **🎯 多元爆炸形态**：内置圆形、爱心、五角星、自定义文字 4 种烟花形状，另支持任意位图图形采样（Shape.CUSTOM），适配节日、告白、祝福等不同场景。
 *   **✍️ 文字烟花特效**：通过像素采样将任意文字/字符转化为粒子烟花，相同文字自动复用采样缓存，开销极低。
 *   **🚀 真实发射动画**：可选火箭上升效果，还原烟花从底部升空后爆炸的完整视觉流程。
 *   **⚡ 零侵入 & 自动化**：初始化后自动附着 Activity，自动管理生命周期。
@@ -42,7 +42,7 @@ dependencyResolutionManagement {
 
 ```groovy
 dependencies {
-    implementation 'com.github.xiaobo2001:fireworksandroid:v1.1.0' // 请使用最新版本
+    implementation 'com.github.xiaobo2001:fireworksandroid:v1.2.0' // 请使用最新版本
 }
 ```
 
@@ -143,6 +143,7 @@ GlobalFirework.getInstance().bloom(x, y, config);
 - `Shape.HEART`：爱心形状烟花
 - `Shape.STAR`：五角星形状烟花
 - `Shape.TEXT`：自定义文字烟花
+- `Shape.CUSTOM`：任意图形烟花（v1.2.0 新增，按位图采样）
 
 ```java
 // 爱心形状烟花
@@ -177,6 +178,28 @@ FireworkConfig rocketConfig = new FireworkConfig.Builder()
         .build();
 ```
 
+#### 4.3.4 任意图形烟花（v1.2.0）
+`Shape.CUSTOM` 按位图不透明像素生成粒子，可以把任何图形（emoji、画出的蛋糕/圣诞树、照片剪影等）变成烟花形状；同一位图只采样一次，重复绽放零采样开销。
+
+```java
+// 例：把 emoji 渲染成位图后绽放
+Bitmap bmp = Bitmap.createBitmap(200, 200, Bitmap.Config.ARGB_8888);
+Canvas c = new Canvas(bmp);
+Paint p = new Paint(Paint.ANTI_ALIAS_FLAG);
+p.setTextSize(180f);
+p.setTextAlign(Paint.Align.CENTER);
+c.drawText("🎂", 100, 165, p);
+
+FireworkConfig cakeConfig = new FireworkConfig.Builder()
+        .shape(FireworkConfig.Shape.CUSTOM)
+        .shapeBitmap(bmp)
+        .colors(0xFFFFD700, 0xFFFF69B4)
+        .count(200)
+        .build();
+
+GlobalFirework.getInstance().bloom(x, y, cakeConfig);
+```
+
 ### 4.4 参数详解
 
 | 方法 | 描述 | 默认值 | 推荐范围 |
@@ -187,7 +210,8 @@ FireworkConfig rocketConfig = new FireworkConfig.Builder()
 | `trail(float)` | 粒子拖尾长度系数，0为无拖尾（圆点） | 1.0f | 0.0f - 3.0f |
 | `duration(float)` | 持续时间系数（影响衰减），值越大越持久 | 1.0f | 0.8f - 1.5f |
 | `sparkle(boolean)` | 保留参数（当前版本暂未产生视觉差异） | true | — |
-| `shape(Shape)` | 设置烟花爆炸形状 | `Shape.CIRCLE` | CIRCLE / HEART / STAR / TEXT |
+| `shape(Shape)` | 设置烟花爆炸形状 | `Shape.CIRCLE` | CIRCLE / HEART / STAR / TEXT / CUSTOM |
+| `shapeBitmap(Bitmap)` | CUSTOM 形状采样位图（ARGB_8888；null 回退圆形） | null | 任意位图 |
 | `text(String)` | 文字烟花的显示内容（仅 TEXT 形状生效） | `"A"` | 任意字符串 |
 | `textSize(float)` | 文字采样字号（仅 TEXT 形状生效，越大粒子越密） | `100f` | 60 - 240 |
 | `rocket(boolean)` | 是否开启火箭上升后爆炸的发射动画 | `false` | true / false |
@@ -451,6 +475,11 @@ fireworkView.resume();             // 恢复
 ---
 
 ## 📋 版本更新记录 (Changelog)
+
+### v1.2.0（2026-10-25）
+
+**新增 API**
+- `FireworkConfig.Shape.CUSTOM` + `Builder.shapeBitmap(Bitmap)`：任意图形烟花，按位图不透明像素采样生成粒子（同一位图缓存采样结果，重复绽放零开销）
 
 ### v1.1.0（2026-10-25）
 

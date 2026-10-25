@@ -9,12 +9,16 @@ import android.graphics.Rect;
 import android.util.AttributeSet;
 import android.view.View;
 
+import java.lang.ref.WeakReference;
+import java.lang.ref.WeakReference;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Queue;
 import java.util.Random;
+import java.util.WeakHashMap;
+import java.util.WeakHashMap;
 
 public class FireworkView extends View {
 
@@ -37,6 +41,9 @@ public class FireworkView extends View {
 
     // ===== 性能优化：消除每帧分配 =====
     private final List<ExplosionTask> pendingExplosions = new ArrayList<>(4);
+
+    // ===== v1.2.0 任意图形（CUSTOM）采样缓存：同一位图只采样一次 =====
+    private final WeakHashMap<Bitmap, ShapeSample> shapeSampleCache = new WeakHashMap<>();
 
     // ===== 性能优化：文字烟花栅格缓存与采样像素缓存 =====
     // 相同文字+字号的连续爆炸直接复用缓存的采样像素（零原生调用），
@@ -219,6 +226,8 @@ public class FireworkView extends View {
 
         if (cfg.shape == FireworkConfig.Shape.TEXT) {
             createByText(x, y, cfg, isRandomColor, baseHue);
+        } else if (cfg.shape == FireworkConfig.Shape.CUSTOM) {
+            createByShapeBitmap(x, y, cfg, isRandomColor, baseHue);
         } else if (cfg.shape == FireworkConfig.Shape.HEART) {
             createByMath(x, y, cfg, true, isRandomColor, baseHue);
         } else if (cfg.shape == FireworkConfig.Shape.STAR) {
@@ -288,6 +297,72 @@ public class FireworkView extends View {
                 }
             }
         }
+    }
+
+    /**
+     * 【v1.2.0】任意图形烟花：按位图不透明像素生成粒子，形成图形轮廓。
+     * 位图建议 ARGB_8888；采样结果按位图对象缓存，重复绽放零采样开销。
+     */
+    private void createByShapeBitmap(float x, float y, FireworkConfig cfg, boolean isRand, float hue) {
+        Bitmap bmp = (cfg.shapeBitmap != null && !cfg.shapeBitmap.isRecycled()) ? cfg.shapeBitmap : null;
+        if (bmp == null) {
+            createByCircle(x, y, cfg, isRand, hue);
+            return;
+        }
+
+        ShapeSample sample = shapeSampleCache.get(bmp);
+        if (sample == null) {
+            int bw = bmp.getWidth();
+            int bh = bmp.getHeight();
+            int[] pixels = new int[bw * bh];
+            bmp.getPixels(pixels, 0, bw, 0, 0, bw, bh);
+            sample = new ShapeSample();
+            sample.w = bw;
+            sample.h = bh;
+            sample.cx = bw / 2;
+            sample.cy = bh / 2;
+            sample.pixels = pixels;
+            shapeSampleCache.put(bmp, sample);
+        }
+
+        final int bw = sample.w;
+        final int bh = sample.h;
+        final int[] pixels = sample.pixels;
+        final int centerX = sample.cx;
+        final int centerY = sample.cy;
+
+        // 采样步长随图形尺寸自适应，控制粒子总量；饱和时加粗采样
+        int step = Math.max(2, (int) (Math.sqrt(bw * (long) bh) / 26f));
+        if (activeParticles.size() > maxParticles * 0.7) {
+            step = step * 2;
+        }
+
+        for (int ix = 0; ix < bw; ix += step) {
+            for (int iy = 0; iy < bh; iy += step) {
+                if ((pixels[iy * bw + ix] >>> 24) > 32) {
+                    float rx = ix + (random.nextFloat() - 0.5f) * step;
+                    float ry = iy + (random.nextFloat() - 0.5f) * step;
+
+                    float dx = rx - centerX;
+                    float dy = ry - centerY;
+                    float dist = (float) Math.sqrt(dx * dx + dy * dy);
+                    float nx = dx / (dist + 1f);
+                    float ny = dy / (dist + 1f);
+
+                    float force = (dist * 0.12f + 2f) * cfg.explosionRange;
+                    float vx = nx * force + (random.nextFloat() - 0.5f) * 2f;
+                    float vy = ny * force + (random.nextFloat() - 0.5f) * 2f;
+
+                    spawnTextParticle(x, y, vx, vy, cfg, isRand, hue);
+                }
+            }
+        }
+    }
+
+    /** 图形采样结果缓存（按位图对象缓存，位图回收后自动释放） */
+    private static final class ShapeSample {
+        int w, h, cx, cy;
+        int[] pixels;
     }
 
     private void spawnTextParticle(float x, float y, float vx, float vy, FireworkConfig cfg, boolean isRand, float hue) {
