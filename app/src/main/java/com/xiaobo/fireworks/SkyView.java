@@ -371,13 +371,14 @@ public class SkyView extends View {
         }
     }
 
-    /** 黄昏(17-20h)暖金 / 深夜(21-4h)冷蓝 / 黎明(5-8h)淡青，极低透明度不喧宾夺主 */
+    /** 时段叠色（极低透明度，仅轻微氛围）：黄昏暖金/深夜冷蓝/黎明淡青。
+     *  【修复】用户反馈背景偏灰不纯黑——透明度从 13%/10%/8% 降到 4%/3%/2%，近乎不可见 */
     private static int timeTintColor() {
         java.util.Calendar c = java.util.Calendar.getInstance();
         int hour = c.get(java.util.Calendar.HOUR_OF_DAY);
-        if (hour >= 17 && hour < 21) return 0x22FF9A3C;   // 黄昏暖金
-        if (hour >= 5 && hour < 9) return 0x14286A8A;      // 黎明淡青
-        if (hour >= 21 || hour < 5) return 0x1A2C4A78;     // 深夜冷蓝
+        if (hour >= 17 && hour < 21) return 0x0BFF9A3C;   // 黄昏暖金（4.3%）
+        if (hour >= 5 && hour < 9) return 0x07286A8A;     // 黎明淡青（2.7%）
+        if (hour >= 21 || hour < 5) return 0x082C4A78;     // 深夜冷蓝（3.1%）
         return 0;
     }
     @Override
