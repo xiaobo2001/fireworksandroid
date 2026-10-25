@@ -2,6 +2,7 @@ package com.xiaobo.fireworks;
 
 import android.animation.ValueAnimator;
 import android.content.Context;
+import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
@@ -64,6 +65,13 @@ public class SkyView extends View {
     private float[][] zodiacPoints;
     private int[][] zodiacSegments;
 
+    // ===== 性能：月相/星座预渲染缓存（近静态内容，避免每帧重复绘制调用） =====
+    private Bitmap moonCacheBitmap;
+    private Bitmap zodiacCacheBitmap;
+    private int cacheW = 0, cacheH = 0;
+    private int weatherTarget = 24;
+    private final RectF weatherOval = new RectF(); // 复用椭圆矩形，消除每粒子每帧分配
+
     private static final float METEOR_MIN_ANGLE = 8f, METEOR_MAX_ANGLE = 22f;
     private static final int METEOR_SEGMENTS = 10;
 
@@ -90,6 +98,22 @@ public class SkyView extends View {
     public void setStarCount(int count) {
         this.starCount = Math.max(10, count);
         generateStars();
+    }
+
+    /** 月亮（按当天真实月相绘制） */
+    public void setMoonEnabled(boolean enabled) {
+        this.moonEnabled = enabled;
+        invalidateCelestialCache();
+    }
+
+    /** 当日星座连线（按真实日期自动计算） */
+    public void setConstellationEnabled(boolean enabled) {
+        this.constellationEnabled = enabled;
+        invalidateCelestialCache();
+    }
+
+    private void invalidateCelestialCache() {
+        cacheW = 0;
     }
 
     /** 星星抗锯齿（低端机可关闭省填充） */
@@ -125,16 +149,6 @@ public class SkyView extends View {
         return weather;
     }
 
-    /** 月亮（按当天真实月相绘制） */
-    public void setMoonEnabled(boolean enabled) {
-        this.moonEnabled = enabled;
-    }
-
-    /** 当日星座连线（按真实日期自动计算） */
-    public void setConstellationEnabled(boolean enabled) {
-        this.constellationEnabled = enabled;
-    }
-
     /** 心情染色星：按概率给一部分星星上色（传 null 恢复纯白） */
     public void setMoodStarColors(int[] colors) {
         this.moodStarColors = (colors != null && colors.length > 0) ? colors : null;
@@ -168,6 +182,8 @@ public class SkyView extends View {
     public void setSize(int width, int height) {
         fieldWidth = width;
         fieldHeight = height;
+        weatherTarget = Math.max(24, width / 34);
+        cacheW = 0; // 尺寸变化，重建月相/星座缓存
         generateStars();
     }
 
@@ -286,8 +302,7 @@ public class SkyView extends View {
 
         // 天气粒子
         if (weather != WEATHER_NONE) {
-            int target = Math.max(24, width / 34);
-            while (weatherList.size() < target) weatherList.add(createWeatherP());
+            while (weatherList.size() < weatherTarget) weatherList.add(createWeatherP());
         }
         for (int i = weatherList.size() - 1; i >= 0; i--) {
             WeatherP p = weatherList.get(i);
@@ -316,7 +331,6 @@ public class SkyView extends View {
         drawMeteors(canvas);
         drawLanterns(canvas);
     }
-
     @Override
     protected void onSizeChanged(int w, int h, int oldw, int oldh) {
         super.onSizeChanged(w, h, oldw, oldh);
@@ -339,38 +353,66 @@ public class SkyView extends View {
         return (float) age;
     }
 
-    private void drawMoon(Canvas canvas, int w, int h) {
-        if (moonAgeDays < 0f) moonAgeDays = computeMoonAge();
-        float cx = w * 0.84f;
-        float cy = h * 0.14f;
-        float r = Math.max(14f, Math.min(w, h) * 0.05f);
+    private float moonRadius(int w, int h) {
+        return Math.max(14f, Math.min(w, h) * 0.05f);
+    }
 
-        // 光晕
+    /** 月相/星座预渲染缓存：尺寸或开关变化时重建一次，每帧仅剩 2 次 drawBitmap */
+    private void ensureCelestialCache(int w, int h) {
+        if (cacheW == w && cacheH == h && (moonCacheBitmap != null || zodiacCacheBitmap != null)) return;
+        cacheW = w;
+        cacheH = h;
+        buildMoonCache(w, h);
+        buildZodiacCache(w, h);
+    }
+
+    private void buildMoonCache(int w, int h) {
+        if (moonCacheBitmap != null) {
+            moonCacheBitmap.recycle();
+            moonCacheBitmap = null;
+        }
+        if (!moonEnabled) return;
+        if (moonAgeDays < 0f) moonAgeDays = computeMoonAge();
+        float r = moonRadius(w, h);
+        int size = Math.max(24, (int) Math.ceil(r * 5.6f)); // 覆盖 2.6r 光晕两侧 + 余量
+        Bitmap bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+        Canvas c = new Canvas(bmp);
+        float cx = size / 2f, cy = size / 2f;
+
         paint.setStyle(Paint.Style.FILL);
         paint.setAntiAlias(true);
+        // 光晕
         paint.setColor(0xFFF7F3DC);
         paint.setAlpha(26);
-        canvas.drawCircle(cx, cy, r * 2.6f, paint);
+        c.drawCircle(cx, cy, r * 2.6f, paint);
         paint.setAlpha(52);
-        canvas.drawCircle(cx, cy, r * 1.7f, paint);
-
+        c.drawCircle(cx, cy, r * 1.7f, paint);
         // 月面
         paint.setColor(0xFFF5EFCE);
         paint.setAlpha(235);
-        canvas.drawCircle(cx, cy, r, paint);
-
-        // 月相阴影：按照亮比例画偏移暗圆，近似弦月/凸月
-        float frac = (1f - (float) Math.cos(2 * Math.PI * moonAgeDays / 29.530588853)) / 2f; // 0 新月 → 1 满月
+        c.drawCircle(cx, cy, r, paint);
+        // 月相阴影：按亮比例画偏移暗圆，近似弦月/凸月
+        float frac = (1f - (float) Math.cos(2 * Math.PI * moonAgeDays / 29.530588853)) / 2f;
         if (frac < 0.98f) {
-            float offset = (1f - frac) * 2f * r + r * 0.08f; // 满月时几乎不遮挡
+            float offset = (1f - frac) * 2f * r + r * 0.08f;
             boolean waxing = moonAgeDays < 14.765f;
-            paint.setColor(0x14001020);
+            paint.setColor(0xFF001020);
             paint.setAlpha(200);
-            canvas.drawCircle(cx + (waxing ? -offset : offset), cy, r, paint);
-            // 阴影收边：再补一层半透明，避免生硬圆边
+            c.drawCircle(cx + (waxing ? -offset : offset), cy, r, paint);
             paint.setAlpha(90);
-            canvas.drawCircle(cx + (waxing ? -offset * 1.06f : offset * 1.06f), cy, r * 0.98f, paint);
+            c.drawCircle(cx + (waxing ? -offset * 1.06f : offset * 1.06f), cy, r * 0.98f, paint);
         }
+        moonCacheBitmap = bmp;
+    }
+
+    private void drawMoon(Canvas canvas, int w, int h) {
+        ensureCelestialCache(w, h);
+        if (moonCacheBitmap == null) return;
+        paint.setStyle(Paint.Style.FILL);
+        paint.setAlpha(255);
+        paint.setFilterBitmap(true);
+        canvas.drawBitmap(moonCacheBitmap, w * 0.84f - moonCacheBitmap.getWidth() * 0.5f,
+                h * 0.14f - moonCacheBitmap.getHeight() * 0.5f, paint);
     }
 
     // ========== 当日星座（按真实日期） ==========
@@ -410,11 +452,18 @@ public class SkyView extends View {
         return 11;                                // 双鱼（219-320）
     }
 
-    private void drawConstellation(Canvas canvas, int w, int h) {
-        if (zodiacPoints == null) computeZodiac();
-        float originX = w * 0.10f;
-        float originY = h * 0.16f;
+    private void buildZodiacCache(int w, int h) {
+        if (zodiacCacheBitmap != null) {
+            zodiacCacheBitmap.recycle();
+            zodiacCacheBitmap = null;
+        }
+        if (!constellationEnabled) return;
+        computeZodiac();
         float span = Math.min(w, h) * 0.22f;
+        float margin = span * 0.08f;
+        int size = Math.max(32, (int) Math.ceil(span * 1.15f));
+        Bitmap bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888);
+        Canvas c = new Canvas(bmp);
 
         // 连线
         paint.setStyle(Paint.Style.STROKE);
@@ -422,19 +471,28 @@ public class SkyView extends View {
         paint.setColor(0xFF9FB8D8);
         paint.setAlpha(70);
         for (int[] seg : zodiacSegments) {
-            float x1 = originX + zodiacPoints[seg[0]][0] * span;
-            float y1 = originY + zodiacPoints[seg[0]][1] * span;
-            float x2 = originX + zodiacPoints[seg[1]][0] * span;
-            float y2 = originY + zodiacPoints[seg[1]][1] * span;
-            canvas.drawLine(x1, y1, x2, y2, paint);
+            c.drawLine(margin + zodiacPoints[seg[0]][0] * span, margin + zodiacPoints[seg[0]][1] * span,
+                    margin + zodiacPoints[seg[1]][0] * span, margin + zodiacPoints[seg[1]][1] * span, paint);
         }
         // 星点
         paint.setStyle(Paint.Style.FILL);
         for (float[] pt : zodiacPoints) {
             paint.setColor(0xFFCFE4FF);
             paint.setAlpha(200);
-            canvas.drawCircle(originX + pt[0] * span, originY + pt[1] * span, 1.6f, paint);
+            c.drawCircle(margin + pt[0] * span, margin + pt[1] * span, 1.6f, paint);
         }
+        zodiacCacheBitmap = bmp;
+    }
+
+    private void drawConstellation(Canvas canvas, int w, int h) {
+        ensureCelestialCache(w, h);
+        if (zodiacCacheBitmap == null) return;
+        float span = Math.min(w, h) * 0.22f;
+        float margin = span * 0.08f;
+        paint.setStyle(Paint.Style.FILL);
+        paint.setAlpha(255);
+        paint.setFilterBitmap(true);
+        canvas.drawBitmap(zodiacCacheBitmap, w * 0.10f - margin, h * 0.16f - margin, paint);
     }
 
     // ========== 星空 ==========
@@ -471,11 +529,16 @@ public class SkyView extends View {
     private void drawStars(Canvas canvas) {
         paint.setAntiAlias(starAntiAlias);
         paint.setStyle(Paint.Style.FILL);
+        // 无心情染色时颜色统一为白，setColor 提出循环（每帧省百余次调用）
+        final boolean uniformColor = (moodStarColors == null);
+        if (uniformColor) {
+            paint.setColor(Color.WHITE);
+        }
         for (int i = 0; i < starList.size(); i++) {
             Star star = starList.get(i);
             float alpha = star.baseAlpha + (float) Math.sin(star.twinklePhase) * 40;
             alpha = Math.max(10, Math.min(255, alpha));
-            paint.setColor(star.color);
+            if (!uniformColor) paint.setColor(star.color);
             paint.setAlpha((int) alpha);
             canvas.drawCircle(star.x, star.y, star.radius, paint);
         }
@@ -515,6 +578,7 @@ public class SkyView extends View {
 
     private void drawMeteors(Canvas canvas) {
         if (meteorList.isEmpty()) return;
+        paint.setStrokeCap(Paint.Cap.ROUND); // 提出：同一帧所有流星共用
         for (int i = 0; i < meteorList.size(); i++) {
             Meteor m = meteorList.get(i);
             float fadeIn = Math.min(1f, (1f - m.life) / 0.15f);
@@ -529,7 +593,6 @@ public class SkyView extends View {
             float segLen = m.trailLen / METEOR_SEGMENTS;
 
             paint.setStyle(Paint.Style.STROKE);
-            paint.setStrokeCap(Paint.Cap.ROUND);
             for (int s = 0; s < METEOR_SEGMENTS; s++) {
                 float t = s / (float) METEOR_SEGMENTS;
                 float alpha = a * (1f - t) * (1f - t);
@@ -658,13 +721,13 @@ public class SkyView extends View {
             if (weather == WEATHER_SNOW) {
                 canvas.drawCircle(p.x, p.y, p.size, paint);
             } else {
-                // 樱花/银杏：旋转的椭圆叶
+                // 樱花/银杏：旋转的椭圆叶（矩形复用，消除每粒子每帧分配）
                 float rot = p.phase * 1.5f;
                 canvas.save();
                 canvas.translate(p.x, p.y);
                 canvas.rotate((float) Math.toDegrees(rot));
-                RectF oval = new RectF(-p.size, -p.size * 0.6f, p.size, p.size * 0.6f);
-                canvas.drawOval(oval, paint);
+                weatherOval.set(-p.size, -p.size * 0.6f, p.size, p.size * 0.6f);
+                canvas.drawOval(weatherOval, paint);
                 canvas.restore();
             }
         }
@@ -676,6 +739,14 @@ public class SkyView extends View {
         if (animator != null) {
             animator.cancel();
             animator = null;
+        }
+        if (moonCacheBitmap != null) {
+            moonCacheBitmap.recycle();
+            moonCacheBitmap = null;
+        }
+        if (zodiacCacheBitmap != null) {
+            zodiacCacheBitmap.recycle();
+            zodiacCacheBitmap = null;
         }
         starList.clear();
     }
