@@ -1,0 +1,73 @@
+﻿2026-10-25T09:13:32.9424654Z ##[group]Run actions/checkout@v4
+2026-10-25T09:13:32.9425593Z with:
+2026-10-25T09:13:32.9426358Z   repository: xiaobo2001/fireworksandroid
+2026-10-25T09:13:32.9430478Z   token: ***
+2026-10-25T09:13:32.9430912Z   ssh-strict: true
+2026-10-25T09:13:32.9431345Z   ssh-user: git
+2026-10-25T09:13:32.9431783Z   persist-credentials: true
+2026-10-25T09:13:32.9432258Z   clean: true
+2026-10-25T09:13:32.9432696Z   sparse-checkout-cone-mode: true
+2026-10-25T09:13:32.9433198Z   fetch-depth: 1
+2026-10-25T09:13:32.9433618Z   fetch-tags: false
+2026-10-25T09:13:32.9434053Z   show-progress: true
+2026-10-25T09:13:32.9434504Z   lfs: false
+2026-10-25T09:13:32.9434908Z   submodules: false
+2026-10-25T09:13:32.9435349Z   set-safe-directory: true
+2026-10-25T09:13:32.9435845Z   allow-unsafe-pr-checkout: false
+2026-10-25T09:13:32.9436784Z ##[endgroup]
+2026-10-25T09:13:33.0471515Z Syncing repository: xiaobo2001/fireworksandroid
+2026-10-25T09:13:33.0474374Z ##[group]Getting Git version info
+2026-10-25T09:13:33.0475724Z Working directory is '/home/runner/work/fireworksandroid/fireworksandroid'
+2026-10-25T09:13:33.0478133Z [command]/usr/bin/git version
+2026-10-25T09:13:33.0648321Z git version 2.55.0
+2026-10-25T09:13:33.0671015Z ##[endgroup]
+2026-10-25T09:13:33.0689055Z Temporarily overriding HOME='/home/runner/work/_temp/b068fcdf-a34b-492d-9d96-07fe74f62645' before making global git config changes
+2026-10-25T09:13:33.0691674Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-25T09:13:33.0699520Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/fireworksandroid/fireworksandroid
+2026-10-25T09:13:33.0785511Z Deleting the contents of '/home/runner/work/fireworksandroid/fireworksandroid'
+2026-10-25T09:13:33.0792893Z ##[group]Initializing the repository
+2026-10-25T09:13:33.0819029Z [command]/usr/bin/git init /home/runner/work/fireworksandroid/fireworksandroid
+2026-10-25T09:13:33.0977558Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-10-25T09:13:33.0979804Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-10-25T09:13:33.0981661Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-10-25T09:13:33.0983276Z hint: call:
+2026-10-25T09:13:33.0984297Z hint:
+2026-10-25T09:13:33.0985609Z hint: 	git config --global init.defaultBranch <name>
+2026-10-25T09:13:33.0987269Z hint:
+2026-10-25T09:13:33.0988517Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-10-25T09:13:33.0990466Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-10-25T09:13:33.0991900Z hint:
+2026-10-25T09:13:33.0992752Z hint: 	git branch -m <name>
+2026-10-25T09:13:33.0993817Z hint:
+2026-10-25T09:13:33.0995186Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-10-25T09:13:33.0997238Z Initialized empty Git repository in /home/runner/work/fireworksandroid/fireworksandroid/.git/
+2026-10-25T09:13:33.1008755Z [command]/usr/bin/git remote add origin https://github.com/xiaobo2001/fireworksandroid
+2026-10-25T09:13:33.1088483Z ##[endgroup]
+2026-10-25T09:13:33.1090044Z ##[group]Disabling automatic garbage collection
+2026-10-25T09:13:33.1091187Z [command]/usr/bin/git config --local gc.auto 0
+2026-10-25T09:13:33.1144936Z ##[endgroup]
+2026-10-25T09:13:33.1145797Z ##[group]Setting up auth
+2026-10-25T09:13:33.1148811Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-25T09:13:33.1201054Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-25T09:13:33.1643695Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-25T09:13:33.1685731Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-25T09:13:33.1918383Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-25T09:13:33.1957959Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-25T09:13:33.2190063Z [command]/usr/bin/git config --local http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-10-25T09:13:33.2234125Z ##[endgroup]
+2026-10-25T09:13:33.2235118Z ##[group]Fetching the repository
+2026-10-25T09:13:33.2244336Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +6e87746067a77436205e1ffb0fdf720774122984:refs/remotes/origin/master
+2026-10-25T09:13:33.4537611Z From https://github.com/xiaobo2001/fireworksandroid
+2026-10-25T09:13:33.4541159Z  * [new ref]         6e87746067a77436205e1ffb0fdf720774122984 -> origin/master
+2026-10-25T09:13:33.4545751Z ##[endgroup]
+2026-10-25T09:13:33.4547982Z ##[group]Determining the checkout info
+2026-10-25T09:13:33.4550217Z ##[endgroup]
+2026-10-25T09:13:33.4556165Z [command]/usr/bin/git sparse-checkout disable
+2026-10-25T09:13:33.4617708Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2026-10-25T09:13:33.4656661Z ##[group]Checking out the ref
+2026-10-25T09:13:33.4663026Z [command]/usr/bin/git checkout --progress --force -B master refs/remotes/origin/master
+2026-10-25T09:13:33.4793817Z Reset branch 'master'
+2026-10-25T09:13:33.4801016Z branch 'master' set up to track 'origin/master'.
+2026-10-25T09:13:33.4808806Z ##[endgroup]
+2026-10-25T09:13:33.4859053Z [command]/usr/bin/git log -1 --format=%H
+2026-10-25T09:13:33.4887697Z 6e87746067a77436205e1ffb0fdf720774122984
